@@ -1,0 +1,31 @@
+# 2 of any msp
+
+identities:
+    admin1: {"role": {"name": "admin", "mspId": "Org1MSP"}}
+    member1: {"role": {"name": "member", "mspId": "Org1MSP"}}
+    admin2: {"role": {"name": "admin", "mspId": "Org2MSP"}}
+    member2: {"role": {"name": "member", "mspId": "Org2MSP"}}
+    admin3: {"role": {"name": "admin", "mspId": "Org3MSP"}}
+    member3: {"role": {"name": "member", "mspId": "Org3MSP"}}
+    admin4: {"role": {"name": "admin", "mspId": "Org4MSP"}}
+    member4: {"role": {"name": "member", "mspId": "Org4MSP"}}
+    admin5: {"role": {"name": "admin", "mspId": "Org5MSP"}}
+    member5: {"role": {"name": "member", "mspId": "Org5MSP"}}
+
+policy:
+    2-of:
+        - 1-of:
+            - signed-by: "admin1"
+            - signed-by: "member1"
+        - 1-of:
+            - signed-by: "admin2"
+            - signed-by: "member2"
+        - 1-of:
+            - signed-by: "admin3"
+            - signed-by: "member3"
+        - 1-of:
+            - signed-by: "admin4"
+            - signed-by: "member4"
+        - 1-of:
+            - signed-by: "admin5"
+            - signed-by: "member5"

@@ -1,0 +1,15 @@
+# this is the most primitive endorsement policy possible
+
+identities:
+    admin1: {"role": {"name": "admin", "mspId": "Org1MSP"}}
+    member1: {"role": {"name": "member", "mspId": "Org1MSP"}}
+    admin2: {"role": {"name": "admin", "mspId": "idemixMSP1"}}
+    member2: {"role": {"name": "member", "mspId": "idemixMSP1"}}
+
+
+policy:
+    1-of:
+        - signed-by: "admin1"
+        - signed-by: "admin2"
+        - signed-by: "member1"
+        - signed-by: "member2"
