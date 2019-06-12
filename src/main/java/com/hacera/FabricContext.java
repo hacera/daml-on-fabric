@@ -125,6 +125,7 @@ public final class FabricContext {
         props.setProperty("negotiationType", "TLS");
         // set timeout
         props.setProperty("ordererWaitTimeMilliSecs", String.format("%d", (int)(timeout * 1000)));
+        props.put("grpc.NettyChannelBuilderOption.maxInboundMessageSize", 1024*1024*100); // really large inbound message size
 
         return props;
         
@@ -302,7 +303,8 @@ public final class FabricContext {
 
         // load config from disk
         try {
-            config = JsonParser.create().parse(new String(Files.readAllBytes(Paths.get("./config.json")), StandardCharsets.UTF_8), FabricContextConfig.class);
+            String configPath = System.getProperty("fabricConfigFile", "./config.json");
+            config = JsonParser.create().parse(new String(Files.readAllBytes(Paths.get(configPath)), StandardCharsets.UTF_8), FabricContextConfig.class);
             // remap single peer to many peers syntax
             if (config.peers == null && config.peer != null) {
                 config.peers = new LinkedList<FabricContextConfig.NodeConfig>();
@@ -565,7 +567,7 @@ public final class FabricContext {
     public void ensureChaincode() {
         try {
 
-            long CC_PROPOSAL_WAIT_TIME = 30000; // in ms
+            long CC_PROPOSAL_WAIT_TIME = 120000; // in ms
 
             //
             // read in the meta config

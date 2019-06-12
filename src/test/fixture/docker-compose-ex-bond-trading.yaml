@@ -70,7 +70,7 @@ services:
   peer0.org1.example.com:
     container_name: exbondtrading_peer0.org1.example.com
     extends:
-      file: peer-base/peer-base.yaml
+      file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org1.example.com
@@ -93,7 +93,7 @@ services:
   peer0.org2.example.com:
     container_name: exbondtrading_peer0.org2.example.com
     extends:
-      file: peer-base/peer-base.yaml
+      file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org2.example.com
@@ -115,7 +115,7 @@ services:
   peer0.org3.example.com:
     container_name: exbondtrading_peer0.org3.example.com
     extends:
-      file: peer-base/peer-base.yaml
+      file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org3.example.com
@@ -137,7 +137,7 @@ services:
   peer0.org4.example.com:
     container_name: exbondtrading_peer0.org4.example.com
     extends:
-      file: peer-base/peer-base.yaml
+      file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org4.example.com
@@ -159,7 +159,7 @@ services:
   peer0.org5.example.com:
     container_name: exbondtrading_peer0.org5.example.com
     extends:
-      file: peer-base/peer-base.yaml
+      file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org5.example.com

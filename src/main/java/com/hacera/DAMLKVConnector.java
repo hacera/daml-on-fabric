@@ -1,6 +1,8 @@
 // (c) 2019 The Unbounded Network LTD
 package com.hacera;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -8,6 +10,8 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 public class DAMLKVConnector {
     
@@ -58,7 +62,7 @@ public class DAMLKVConnector {
         // 100 keys
         long init = System.currentTimeMillis();
         if (!cacheOnly) {
-            ctx.invokeChaincode("RawWrite", key, value);
+            ctx.invokeChaincode("RawWrite", key, gzipBytes(value));
         }
 
         String cacheKey = keyToString(key);
@@ -105,6 +109,9 @@ public class DAMLKVConnector {
         }
         
         byte[] data = ctx.queryChaincode("RawRead", new byte[][]{ key });
+        if (data != null && data.length > 0) {
+            data = gunzipBytes(data);
+        }
         putValue(key, data, true); // update cache with recently read value
         logTime("getValue", init);
         if (data.length == 0)
@@ -139,7 +146,7 @@ public class DAMLKVConnector {
     
     public int putCommit(byte[] commit) {
         long init = System.currentTimeMillis();
-        byte[] newIndexBytes = ctx.invokeChaincode("WriteCommitLog", new byte[][]{ commit });
+        byte[] newIndexBytes = ctx.invokeChaincode("WriteCommitLog", new byte[][]{ gzipBytes(commit) });
         int newIndex = ByteBuffer.wrap(newIndexBytes).order(ByteOrder.LITTLE_ENDIAN).getInt();
         logTime("putCommit", init);
         putCommit(newIndex-1, commit);
@@ -170,6 +177,9 @@ public class DAMLKVConnector {
         }
         
         byte[] data = ctx.queryChaincode("ReadCommit", Integer.toString(index));
+        if (data != null && data.length > 0) {
+            data = gunzipBytes(data);
+        }
         putCommit(index, data); // update cache
         logTime("getCommit", init);
         if (data.length == 0)
@@ -177,12 +187,54 @@ public class DAMLKVConnector {
         return data;
     }
     
+    private byte[] gzipBytes(byte[] data) {
+        
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            GZIPOutputStream out = new GZIPOutputStream(baos);
+            out.write(data);
+            out.close();
+            return baos.toByteArray();
+        } catch (Throwable t) {
+            if (RuntimeException.class.isAssignableFrom(t.getClass())) {
+                throw (RuntimeException) t;
+            } else {
+                throw new RuntimeException(t);
+            }
+        }
+        
+    }
+    
+    private byte[] gunzipBytes(byte[] data) {
+        
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ByteArrayInputStream bais = new ByteArrayInputStream(data);
+            GZIPInputStream in = new GZIPInputStream(bais);
+            byte[] b = new byte[1024];
+            int len;            
+            while ((len = in.read(b)) != -1) {
+                baos.write(b, 0, len);
+            }
+            in.close();
+            bais.close();
+            return baos.toByteArray();
+        } catch (Throwable t) {
+            if (RuntimeException.class.isAssignableFrom(t.getClass())) {
+                throw (RuntimeException) t;
+            } else {
+                throw new RuntimeException(t);
+            }
+        }
+        
+    }
+    
     private void putPackage(String cacheKey, byte[] value, boolean cacheOnly) {
         // check cache size, if too large, remove last value
         // 100 keys
         long init = System.currentTimeMillis();
         if (!cacheOnly) {
-            ctx.invokeChaincode("PackageWrite", cacheKey.getBytes(StandardCharsets.UTF_8), value);
+            ctx.invokeChaincode("PackageWrite", cacheKey.getBytes(StandardCharsets.UTF_8), gzipBytes(value));
             synchronized (this) {
                 packageListCache = null;
             }
@@ -211,7 +263,7 @@ public class DAMLKVConnector {
         
         logTime("putPackage", init);
     }
-    
+
     public void putPackage(String cacheKey, byte[] value) {
         putPackage(cacheKey, value, false);
     }
@@ -230,6 +282,9 @@ public class DAMLKVConnector {
         }
         
         byte[] data = ctx.queryChaincode("PackageRead", new byte[][] { cacheKey.getBytes(StandardCharsets.UTF_8) });
+        if (data != null && data.length > 0) {
+            data = gunzipBytes(data);
+        }
         putPackage(cacheKey, data, true); // update cache with recently read value
         logTime("getPackage", init);
         if (data.length == 0)
