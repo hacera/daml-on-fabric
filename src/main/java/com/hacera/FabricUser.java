@@ -18,7 +18,6 @@ import jodd.json.JsonSerializer;
 import org.apache.milagro.amcl.FP256BN.BIG;
 import org.hyperledger.fabric.protos.idemix.Idemix;
 import org.hyperledger.fabric.sdk.Enrollment;
-// (c) 2019 HACERA
 import org.hyperledger.fabric.sdk.User;
 import org.hyperledger.fabric.sdk.idemix.IdemixCredential;
 import org.hyperledger.fabric.sdk.idemix.IdemixIssuerPublicKey;

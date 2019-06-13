@@ -5,10 +5,7 @@
 package com.hacera
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
-import java.nio.charset.StandardCharsets
-import java.nio.{ByteBuffer, ByteOrder}
 import java.time.Clock
-import java.util
 import java.util.UUID
 
 import akka.NotUsed
@@ -23,19 +20,19 @@ import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.daml_lf.DamlLf.Archive
 import com.digitalasset.platform.services.time.TimeModel
 import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
-import com.digitalasset.platform.akkastreams.dispatcher.SubSource.{OneAfterAnother, RangeSource}
-import com.daml.ledger.participant.state.kvutils.{DamlKvutils, KeyValueSubmission}
+import com.digitalasset.platform.akkastreams.dispatcher.SubSource.{OneAfterAnother}
+import com.daml.ledger.participant.state.kvutils.{KeyValueSubmission}
 
-import scala.collection.JavaConverters._
-//import com.daml.ledger.participant.state.kvutils.KeyValueCommitting
+import com.daml.ledger.participant.state.kvutils.KeyValueCommitting
 import com.daml.ledger.participant.state.kvutils.KeyValueConsumption
 import com.google.protobuf.ByteString
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.collection.breakOut
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import java.util.concurrent.{CompletableFuture, CompletionStage}
 
 object FabricParticipantState {
 
@@ -85,6 +82,8 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
     with AutoCloseable {
   import FabricParticipantState._
   private val logger = LoggerFactory.getLogger(this.getClass)
+
+  implicit private val ec: ExecutionContext = mat.executionContext
 
   val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
 
@@ -221,15 +220,21 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
           // Write commit log to Fabric
           val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
+          // Check and write archive
+          if (commit.submission.hasArchive) {
+            var currentArchives = fabricConn.getPackageList
+            val ar = commit.submission.getArchive
+            if (!currentArchives.contains(ar.getHash)) {
+              fabricConn.putPackage(ar.getHash, ar.toByteArray)
+            }
+          }
+
           // Update the state.
           stateRef = state.copy(
             recordTime = newRecordTime,
             //commitLog = state.commitLog :+ commit,
             //store = state.store ++ allUpdates
           )
-
-          // wait 0.25s before making an event
-          Thread.sleep(250)
 
           // Wake up consumers.
           dispatcher.signalNewHead(newIndex)
@@ -359,22 +364,23 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
       submitterInfo: SubmitterInfo,
       transactionMeta: TransactionMeta,
       transaction: SubmittedTransaction
-  ): Unit = {
-
-    // Construct a [[DamlSubmission]] message using the key-value utilities.
-    // [[DamlSubmission]] contains the serialized transaction and metadata such as
-    // the input contracts and other state required to validate the transaction.
-    val submission =
+  ): CompletionStage[SubmissionResult] =
+    CompletableFuture.completedFuture({
+      // Construct a [[DamlSubmission]] message using the key-value utilities.
+      // [[DamlSubmission]] contains the serialized transaction and metadata such as
+      // the input contracts and other state required to validate the transaction.
+      val submission =
       KeyValueSubmission.transactionToSubmission(submitterInfo, transactionMeta, transaction)
 
-    // Send the [[DamlSubmission]] to the commit actor. The messages are
-    // queued and the actor's receive method is invoked sequentially with
-    // each message, hence this is safe under concurrency.
-    commitActorRef ! CommitSubmission(
-      allocateEntryId,
-      submission
-    )
-  }
+      // Send the [[DamlSubmission]] to the commit actor. The messages are
+      // queued and the actor's receive method is invoked sequentially with
+      // each message, hence this is safe under concurrency.
+      commitActorRef ! CommitSubmission(
+        allocateEntryId,
+        submission
+      )
+      SubmissionResult.Acknowledged
+    })
 
   /** Back-channel for uploading DAML-LF archives.
     * Currently participant-state interfaces do not specify an admin
@@ -440,5 +446,12 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
     */
   def getNewRecordTime(): Timestamp =
     Timestamp.assertFromInstant(Clock.systemUTC().instant())
+
+  /** Allocate a party on the ledger */
+  override def allocateParty(
+                              hint: Option[String],
+                              displayName: Option[String]): CompletionStage[PartyAllocationResult] =
+    // TODO: Implement party management (does not work yet just like in reference)
+    CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
 
 }

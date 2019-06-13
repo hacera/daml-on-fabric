@@ -7,15 +7,13 @@ package com.hacera
 import java.io.{File, FileWriter}
 import java.util.zip.ZipFile
 
-import akka.NotUsed
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.scaladsl.{Sink}
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Supervision}
 import com.daml.ledger.api.server.damlonx.Server
 import com.daml.ledger.participant.state.index.v1.impl.reference.ReferenceIndexService
-import com.daml.ledger.participant.state.v1.{LedgerInitialConditions, Offset, ReadService, Update}
 import com.digitalasset.daml.lf.archive.DarReader
-import com.digitalasset.daml.lf.data.ImmArray
+import com.digitalasset.daml_lf.DamlLf
 import com.digitalasset.daml_lf.DamlLf.Archive
 import com.digitalasset.platform.common.util.DirectExecutionContext
 import org.slf4j.LoggerFactory
@@ -34,7 +32,7 @@ object ExampleServer extends App {
 
   // Initialize Fabric connection
   // this will create the singleton instance and establish the connection
-  com.hacera.DAMLKVConnector.get
+  val fabricConn = com.hacera.DAMLKVConnector.get
 
   // Initialize Akka and log exceptions in flows.
   implicit val system: ActorSystem = ActorSystem("DamlonxExampleServer")
@@ -54,19 +52,30 @@ object ExampleServer extends App {
       .fold(t => throw new RuntimeException(s"Failed to parse DAR from $file", t), dar => dar.all)
   }
 
+  // Parse packages that are already on the chain.
+  // Because we are using ReferenceIndexService, we have to re-upload them
+  val currentPackages = fabricConn.getPackageList
+  currentPackages.foreach { pkgid =>
+    val archive = DamlLf.Archive.parseFrom(fabricConn.getPackage(pkgid))
+    logger.info(s"Found existing archive ${archive.getHash}.")
+    ledger.uploadArchive(archive)
+  }
+
   // Parse DAR archives given as command-line arguments and upload them
   // to the ledger using a side-channel.
   config.archiveFiles.foreach { f =>
     archivesFromDar(f).foreach { archive =>
-      logger.info(s"Uploading archive ${archive.getHash}...")
-      ledger.uploadArchive(archive)
+      if (!currentPackages.contains(archive.getHash)) {
+        logger.info(s"Uploading archive ${archive.getHash}...")
+        ledger.uploadArchive(archive)
+      }
     }
   }
 
   ledger.getLedgerInitialConditions
     .runWith(Sink.head)
     .foreach { initialConditions =>
-      val indexService = FabricIndexService(
+      val indexService = ReferenceIndexService(
         participantReadService = ledger,
         initialConditions = initialConditions
       )
@@ -87,5 +96,6 @@ object ExampleServer extends App {
 
       // Add a hook to close the server. Invoked when Ctrl-C is pressed.
       Runtime.getRuntime.addShutdownHook(new Thread(() => server.close()))
+      Runtime.getRuntime.addShutdownHook(new Thread(() => fabricConn.shutdown()))
     }(DirectExecutionContext)
 }

@@ -1,11 +1,11 @@
 import Dependencies._
 
 ThisBuild / scalaVersion     := "2.12.8"
-ThisBuild / version          := "1.0"
+ThisBuild / version          := "1.1"
 ThisBuild / organization     := "com.hacera"
 ThisBuild / organizationName := "HACERA"
 
-lazy val sdkVersion = "100.12.17"
+lazy val sdkVersion = "100.12.24"
 
 // This task is used by the integration test to detect which version of Ledger API Test Tool to use.
 val printSdkVersion= taskKey[Unit]("printSdkVersion")

@@ -9,9 +9,9 @@ This is an implementation of DAML ledger that stores data (transactions and stat
 - SBT 1.2.8
 - Scala 2.12.7
 
-## Commands to make it work (in a minimal way)
+## Commands to make it work in a minimal way
 
-1. `cd src/test/fixture && ./fabric.sh down && ./fabric.sh up` — this will start a Fabric network required by the service.
+1. `cd src/test/fixture && export DOCKER_COMPOSE_FILE=docker-compose.yaml && ./fabric.sh down && ./fabric.sh up` — this will start a Fabric network required by the service.
 2. `mvn compile assembly:single` — this will build Java part of the project.
 3. `sbt "run --port 6865 <archive>" ` — this will run the actual service.
 

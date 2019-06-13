@@ -16,12 +16,14 @@ services:
       - FABRIC_CA_SERVER_TLS_CERTFILE=/etc/hyperledger/fabric-ca-server-config/ca.org1.example.com-cert.pem
       - FABRIC_CA_SERVER_TLS_KEYFILE=/etc/hyperledger/fabric-ca-server-config/fcf776b02a05600408d0be9d9752afc59f64950b721cacb363b5b95a0fea6216_sk
       - FABRIC_CA_SERVER_REGISTRY_MAXENROLLMENTS=-1
+    ports:
+      - "10054:7054"
     command: /bin/sh -c 'mkdir -p /etc/hyperledger/fabric-ca-server; cp -R /tmp/msp /etc/hyperledger/fabric-ca-server; mv /etc/hyperledger/fabric-ca-server/msp/*PublicKey /etc/hyperledger/fabric-ca-server; fabric-ca-server start -b admin:adminpw ${V11_IDENTITIES_ALLOWREMOVE} ${V11_AFFILIATIONS_ALLOWREMOVE} ${ORG_HYPERLEDGER_FABRIC_SDKTEST_INTEGRATIONTESTS_CA_TLS} -d'
 
     volumes:
       - ./data/crypto-config/peerOrganizations/org1.example.com/ca/:/etc/hyperledger/fabric-ca-server-config:ro
       - ./data/crypto-config/peerOrganizations/org3.example.com/msp/:/tmp/msp:ro
-    container_name: exbondtrading_ca_peerOrg1
+    container_name: damlonfabric_ca_peerOrg1
 
   ca1:
     image: hyperledger/fabric-ca${IMAGE_TAG_FABRIC_CA}
@@ -36,11 +38,11 @@ services:
     volumes:
       - ./data/crypto-config/peerOrganizations/org2.example.com/ca/:/etc/hyperledger/fabric-ca-server-config:ro
       - ./data/crypto-config/peerOrganizations/org4.example.com/msp/:/tmp/msp:ro
-    container_name: exbondtrading_ca_peerOrg2
+    container_name: damlonfabric_ca_peerOrg2
 
 
   orderer.example.com:
-    container_name: exbondtrading_orderer.example.com
+    container_name: damlonfabric_orderer.example.com
     image: hyperledger/fabric-orderer${IMAGE_TAG_FABRIC}
     environment:
       - ORDERER_GENERAL_LOGLEVEL=debug
@@ -67,8 +69,10 @@ services:
      - ./data/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/:/etc/hyperledger/msp/peerOrg1:ro
      - ./data/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/:/etc/hyperledger/msp/peerOrg2:ro
 
+    ports:
+      - 10050:7050
   peer0.org1.example.com:
-    container_name: exbondtrading_peer0.org1.example.com
+    container_name: damlonfabric_peer0.org1.example.com
     extends:
       file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
@@ -87,11 +91,14 @@ services:
     volumes:
       - /var/run/:/host/var/run/
       - ./data/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/:/etc/hyperledger/msp/peer:ro
+    ports:
+      - 10051:7051
+      - 10053:7053
     depends_on:
       - orderer.example.com
 
   peer0.org2.example.com:
-    container_name: exbondtrading_peer0.org2.example.com
+    container_name: damlonfabric_peer0.org2.example.com
     extends:
       file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
@@ -109,11 +116,14 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/:/etc/hyperledger/msp/peer:ro
+    ports:
+       - 10056:7056
+       - 10058:7058
     depends_on:
        - orderer.example.com
 
   peer0.org3.example.com:
-    container_name: exbondtrading_peer0.org3.example.com
+    container_name: damlonfabric_peer0.org3.example.com
     extends:
       file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
@@ -131,11 +141,14 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org3.example.com/peers/peer0.org3.example.com/:/etc/hyperledger/msp/peer:ro
+    ports:
+       - 10060:7060
+       - 10061:7061
     depends_on:
        - orderer.example.com
 
   peer0.org4.example.com:
-    container_name: exbondtrading_peer0.org4.example.com
+    container_name: damlonfabric_peer0.org4.example.com
     extends:
       file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
@@ -153,11 +166,14 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org4.example.com/peers/peer0.org4.example.com/:/etc/hyperledger/msp/peer:ro
+    ports:
+       - 10062:7062
+       - 10063:7063
     depends_on:
        - orderer.example.com
 
   peer0.org5.example.com:
-    container_name: exbondtrading_peer0.org5.example.com
+    container_name: damlonfabric_peer0.org5.example.com
     extends:
       file: peer-base/peer-base-ex-bond-trading.yaml
       service: peer-base
@@ -175,20 +191,23 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org5.example.com/peers/peer0.org5.example.com/:/etc/hyperledger/msp/peer:ro
+    ports:
+       - 10066:7066
+       - 10068:7068
     depends_on:
        - orderer.example.com
 
   configtxlator:
       image: hyperledger/fabric-tools${IMAGE_TAG_FABRIC}
       command: /usr/local/bin/configtxlator start
-      container_name: exbondtrading_configtxlator
+      container_name: damlonfabric_configtxlator
 
   daml-on-fabric:
       image: msb/daml-on-fabric
       command: bash -c 'mvn clean compile assembly:single && sbt "run --port 6865 SemanticTests.dar"'
       volumes:
         - ./../../../:/data/
-      container_name: exbondtrading_daml_on_fabric
+      container_name: damlonfabric_daml_on_fabric
       ports:
         - 7600
         - 6865

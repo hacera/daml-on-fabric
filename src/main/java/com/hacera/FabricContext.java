@@ -31,23 +31,14 @@ import org.hyperledger.fabric.protos.common.Configtx.ConfigUpdateEnvelope;
 import org.hyperledger.fabric.protos.common.Configtx.ConfigValue;
 import org.hyperledger.fabric.protos.common.Configuration.Capabilities;
 import org.hyperledger.fabric.protos.common.Configuration.Capability;
-import org.hyperledger.fabric.protos.common.Policies;
-import org.hyperledger.fabric.protos.common.Policies.ImplicitMetaPolicy;
+import org.hyperledger.fabric.protos.common.Ledger;
 import org.hyperledger.fabric.protos.common.Policies.Policy;
-import org.hyperledger.fabric.protos.common.Policies.SignaturePolicy;
-import org.hyperledger.fabric.protos.common.Policies.SignaturePolicy.NOutOf;
-import org.hyperledger.fabric.protos.orderer.Configuration;
-import org.hyperledger.fabric.protos.orderer.Configuration.BatchSize;
-import org.hyperledger.fabric.protos.orderer.Configuration.BatchTimeout;
-import org.hyperledger.fabric.protos.peer.FabricProposal;
 import org.hyperledger.fabric.protos.peer.FabricProposalResponse;
 import org.hyperledger.fabric.protos.peer.Query;
 import org.hyperledger.fabric.sdk.ChaincodeEndorsementPolicy;
 import org.hyperledger.fabric.sdk.ChaincodeID;
 import org.hyperledger.fabric.sdk.ChaincodeResponse.Status;
 import org.hyperledger.fabric.sdk.Channel;
-import org.hyperledger.fabric.sdk.Channel.TransactionOptions;
-import static org.hyperledger.fabric.sdk.Channel.TransactionOptions.createTransactionOptions;
 import org.hyperledger.fabric.sdk.ChannelConfiguration;
 import org.hyperledger.fabric.sdk.Enrollment;
 import org.hyperledger.fabric.sdk.HFClient;
@@ -60,13 +51,9 @@ import org.hyperledger.fabric.sdk.QueryByChaincodeRequest;
 import org.hyperledger.fabric.sdk.TransactionProposalRequest;
 import org.hyperledger.fabric.sdk.TransactionRequest;
 import org.hyperledger.fabric.sdk.User;
-import org.hyperledger.fabric.sdk.exception.InvalidArgumentException;
 import org.hyperledger.fabric.sdk.identity.X509Enrollment;
 import org.hyperledger.fabric.sdk.security.CryptoSuite;
-import org.hyperledger.fabric.sdk.transaction.ProposalBuilder;
-import org.hyperledger.fabric.sdk.transaction.TransactionContext;
 import org.hyperledger.fabric_ca.sdk.HFCAClient;
-import org.hyperledger.fabric_ca.sdk.RegistrationRequest;
 
 /**
  * This class implements reading the configuration file (for Fabric connectivity)
@@ -844,6 +831,66 @@ public final class FabricContext {
             }
         }
         
+    }
+    
+    public long queryBlockHeight(Peer p) {
+        try {
+            
+            QueryByChaincodeRequest req = fabClient.newQueryProposalRequest();
+            req.setChaincodeID(ChaincodeID.newBuilder().setName("qscc").build());
+            req.setFcn("GetChainInfo");
+            req.setArgs(new String[] { fabChannel.getName() });
+            List<Peer> singlePeer = new LinkedList<Peer>();
+            singlePeer.add(p);
+            Collection<ProposalResponse> responses = fabChannel.queryByChaincode(req, singlePeer);
+            ProposalResponse rsp = responses.iterator().next();
+            // check if status is not success
+            if (rsp.getStatus() != Status.SUCCESS) {
+                throw new FabricContextException(makeErrorFromProposalResponse(rsp));
+            }
+            byte[] result = rsp.getChaincodeActionResponsePayload();
+            Ledger.BlockchainInfo info = Ledger.BlockchainInfo.parseFrom(result);
+            long channelHeight = info.getHeight();
+            return channelHeight;
+            
+        } catch (Throwable t) {
+            if (RuntimeException.class.isAssignableFrom(t.getClass())) {
+                throw (RuntimeException)t;
+            } else {
+                throw new FabricContextException(t);
+            }
+        }
+    }
+    
+    // ensureEndorsersInSync, but with default timeout (30 seconds)
+    public void ensureEndorsersInSync() throws InterruptedException {
+        ensureEndorsersInSync(30000);
+    }
+    
+    // ensureEndorsersInSync waits until block height is equal for all endorsing peers
+    public void ensureEndorsersInSync(long timeout) throws InterruptedException {
+        final long syncTimeout = 30000;
+        long syncTimeoutStart = System.currentTimeMillis();
+        while (System.currentTimeMillis() < syncTimeoutStart+syncTimeout) {
+            Collection<Peer> peers = fabChannel.getPeers();
+            long height = -1;
+            boolean heightMatch = true;
+            for (Peer p : peers) {
+                long curHeight = queryBlockHeight(p);
+                if (height < 0) {
+                    height = curHeight;
+                } else if (height != curHeight) {
+                    heightMatch = false;
+                    break;
+                }
+            }
+            
+            if (heightMatch) {
+                break;
+            }
+            
+            Thread.sleep(250);
+        }
     }
     
     public void shutdown() {
