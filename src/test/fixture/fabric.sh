@@ -12,7 +12,7 @@ if [ ! -e "docker-compose.yaml" ];then
 fi
 
 if [ "$DOCKER_COMPOSE_FILE" == "" ]; then
-  DOCKER_COMPOSE_FILE="docker-compose-ex-bond-trading.yaml"
+  DOCKER_COMPOSE_FILE="docker-compose.yaml"
 fi
 
 ORG_HYPERLEDGER_FABRIC_SDKTEST_VERSION="2.0.0"
