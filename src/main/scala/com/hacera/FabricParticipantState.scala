@@ -18,10 +18,10 @@ import com.digitalasset.daml.lf.data.Ref.PackageId
 import com.digitalasset.daml.lf.data.Time.Timestamp
 import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.daml_lf.DamlLf.Archive
-import com.digitalasset.platform.services.time.TimeModel
 import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
 import com.digitalasset.platform.akkastreams.dispatcher.SubSource.{OneAfterAnother}
 import com.daml.ledger.participant.state.kvutils.{KeyValueSubmission}
+import com.daml.ledger.participant.state.backport.TimeModel
 
 import com.daml.ledger.participant.state.kvutils.KeyValueCommitting
 import com.daml.ledger.participant.state.kvutils.KeyValueConsumption
@@ -33,32 +33,18 @@ import scala.collection.breakOut
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import java.util.concurrent.{CompletableFuture, CompletionStage}
+import java.time.{Duration => JDuration}
 
 object FabricParticipantState {
 
-  /** The complete state of the ledger at a given point in time.
-    * This emulates a key-value blockchain with a log of commits and a key-value store.
-    * The commit log provides the ordering for the log entries, and its height is used
-    * as the [[Offset]].
-    * */
   case class State(
-      // Log of commits, which are either [[DamlSubmission]]s or heartbeats.
-      // Replaying the commits constructs the store.
-      //commitLog: Vector[Commit],
-      // Current record time of the ledger.
-      recordTime: Timestamp,
-      // Store containing both the [[DamlLogEntry]] and [[DamlStateValue]]s.
-      // The store is mutated by applying [[DamlSubmission]]s. The store can
-      // be reconstructed from scratch by replaying [[State.commits]].
-      //store: Map[ByteString, ByteString],
       // Current ledger configuration.
       config: Configuration
   )
 
   sealed trait Commit extends Serializable with Product
 
-  /** A commit sent to the [[FabricParticipantState.CommitActor]],
-    * which inserts it into State.commitLog.
+  /** A commit sent to the [[FabricParticipantState.CommitActor]]
     */
   final case class CommitSubmission(
       entryId: DamlLogEntryId,
@@ -71,12 +57,8 @@ object FabricParticipantState {
 
 /** Implementation of the participant-state [[ReadService]] and [[WriteService]] using
   * the key-value utilities and a Fabric store.
-  *
-  * This example uses Akka actors and streams.
-  * See Akka documentation for information on them:
-  * https://doc.akka.io/docs/akka/current/index-actors.html.
   */
-class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
+class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit system: ActorSystem, mat: Materializer)
     extends ReadService
     with WriteService
     with AutoCloseable {
@@ -88,7 +70,8 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
   val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
 
   // The ledger configuration
-  private val ledgerConfig = Configuration(timeModel = TimeModel.reasonableDefault)
+  private val ledgerConfig = Configuration(
+        TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get)
 
   // DAML Engine for transaction validation.
   private val engine = Engine()
@@ -110,17 +93,12 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
   // Fabric connection
   private val fabricConn = com.hacera.DAMLKVConnector.get
 
-  /** Reference to the latest state of the in-memory ledger.
-    * This state is only updated by the [[CommitActor]], which processes submissions
-    * sequentially and non-concurrently.
-    *
-    * Reading from the state must happen by first taking the reference (val state = stateRef),
-    * as otherwise the reads may cross update boundaries.
+  /** Reference to the latest state.
     */
   @volatile private var stateRef: State =
     State(
       //commitLog = Vector.empty[Commit],
-      recordTime = Timestamp.Epoch,
+      //recordTime = Timestamp.Epoch,
       //store = Map.empty[ByteString, ByteString],
       config = Configuration(
         timeModel = TimeModel.reasonableDefault
@@ -158,24 +136,20 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
       case commit @ CommitHeartbeat(newRecordTime) =>
         logger.trace(s"CommitActor: committing heartbeat, recordTime=$newRecordTime")
 
+        // Write recordTime to Fabric
+        fabricConn.putRecordTime(newRecordTime.toString);
+
         // Write commit log to Fabric
         val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
-        // Update the state.
-        stateRef = stateRef.copy(
-          //commitLog = stateRef.commitLog :+ commit,
-          recordTime = newRecordTime
-        )
-
-        // wait 0.25s before making an event
-        Thread.sleep(250)
-
-        // Wake up consumers.
-        dispatcher.signalNewHead(newIndex)
+        // if ledger is running, it will read heartbeat back from the chain...
+        if (!roleLedger) {
+          logger.info(s"Committing new Heartbeat at ${newRecordTime}")
+        }
 
       case commit @ CommitSubmission(entryId, submission) =>
         val state = stateRef
-        val newRecordTime = getNewRecordTime
+        val newRecordTime = Timestamp.assertFromString(fabricConn.getRecordTime)
 
         // check if entry already exists
         val existingEntry = fabricConn.getValue(entryId.getEntryId.toByteArray)
@@ -188,56 +162,50 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
             s"CommitActor: processing submission ${KeyValueCommitting.prettyEntryId(entryId)}..."
           )
           // Process the submission to produce the log entry and the state updates.
-          val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
-            engine,
-            state.config,
-            entryId,
-            newRecordTime,
-            submission,
-            submission.getInputLogEntriesList.asScala
-              .map(eid => eid -> getLogEntry(state, eid))(breakOut),
-            submission.getInputDamlStateList.asScala
-              .map(key => key -> getDamlState(state, key))(breakOut)
-          )
+          //this.synchronized {
+            val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
+              engine,
+              state.config,
+              entryId,
+              newRecordTime,
+              submission,
+              submission.getInputLogEntriesList.asScala
+                .map(eid => eid -> getLogEntry(state, eid))(breakOut),
+              submission.getInputDamlStateList.asScala
+                .map(key => key -> getDamlState(state, key))(breakOut)
+            )
 
-          // Combine the abstract log entry and the state updates into concrete updates to the store.
-          val allUpdates =
-            damlStateUpdates.map {
-              case (k, v) =>
-                NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(k)) ->
-                  KeyValueCommitting.packDamlStateValue(v)
-            } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
+            // Combine the abstract log entry and the state updates into concrete updates to the store.
+            val allUpdates =
+              damlStateUpdates.map {
+                case (k, v) =>
+                  NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(k)) ->
+                    KeyValueCommitting.packDamlStateValue(v)
+              } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
 
-          logger.trace(
-            s"CommitActor: committing ${KeyValueCommitting.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
-          )
+            logger.trace(
+              s"CommitActor: committing ${KeyValueCommitting.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
+            )
 
-          // Write some state to Fabric
-          for ((k, v) <- allUpdates) {
-            fabricConn.putValue(k.toByteArray, v.toByteArray)
-          }
+            // Write some state to Fabric
+            for ((k, v) <- allUpdates) {
+              fabricConn.putValue(k.toByteArray, v.toByteArray)
+            }
+          //}
 
           // Write commit log to Fabric
           val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
           // Check and write archive
-          if (commit.submission.hasArchive) {
-            var currentArchives = fabricConn.getPackageList
-            val ar = commit.submission.getArchive
-            if (!currentArchives.contains(ar.getHash)) {
-              fabricConn.putPackage(ar.getHash, ar.toByteArray)
+          if (commit.submission.hasPackageUploadEntry) {
+            val archives = commit.submission.getPackageUploadEntry.getArchivesList
+            archives.forEach { ar =>
+              var currentArchives = fabricConn.getPackageList
+              if (!currentArchives.contains(ar.getHash)) {
+                fabricConn.putPackage(ar.getHash, ar.toByteArray)
+              }
             }
           }
-
-          // Update the state.
-          stateRef = state.copy(
-            recordTime = newRecordTime,
-            //commitLog = state.commitLog :+ commit,
-            //store = state.store ++ allUpdates
-          )
-
-          // Wake up consumers.
-          dispatcher.signalNewHead(newIndex)
         }
     }
   }
@@ -248,19 +216,68 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
     val actorRef =
       system.actorOf(Props(new CommitActor), s"commit-actor-$ledgerId")
 
-    // Schedule heartbeat messages to be delivered to the commit actor.
-    // This source stops when the actor dies.
-    val _ = Source
-      .tick(HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, ())
-      .map(_ => CommitHeartbeat(getNewRecordTime))
-      .to(Sink.actorRef(actorRef, onCompleteMessage = ()))
-      .run()
+    if (roleTime) {
+      // Schedule heartbeat messages to be delivered to the commit actor.
+      // This source stops when the actor dies.
+      val _ = Source
+        .tick(HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, ())
+        .map(_ => CommitHeartbeat(getNewRecordTime))
+        .to(Sink.actorRef(actorRef, onCompleteMessage = ()))
+        .run()
+    }
 
     actorRef
   }
 
+  /** Thread that reads new commits back from Fabric */
+  class CommitReader extends Thread {
+    override def run(): Unit = {
+      var running = true
+      var lastHeight = fabricConn.getCommitHeight
+      while (running) {
+
+        // we may not use block events directly to generate updates...
+        // however, we can check if there are new blocks to not query the chain too often
+        if (fabricConn.checkNewBlocks()) {
+          val height = fabricConn.getCommitHeight
+          if (height > lastHeight) {
+            lastHeight = height
+            dispatcher.signalNewHead(height)
+          }
+        }
+
+        try {
+          Thread.sleep(50);
+        } catch {
+          case e: InterruptedException => running = false
+        }
+      }
+    }
+  }
+
+  private val commitReaderRef = {
+    val threadRef = new CommitReader
+
+    threadRef.start()
+
+    threadRef
+  }
+
   /** The index of the beginning of the commit log */
   private val beginning: Int = fabricConn.getCommitHeight
+
+  if (beginning == 0 && roleTime) {
+    // write first ever time into the ledger.. just to make sure that there _is_ time until it starts working
+    fabricConn.putRecordTime(getNewRecordTime.toString)
+  }
+
+  if (beginning == 0) {
+    // now as bad as this is we really need to wait until first record time appears.
+    // otherwise, ledger cannot function
+    while (fabricConn.getRecordTime() == "") {
+      Thread.sleep(500)
+    }
+  }
 
   /** Dispatcher to subscribe to 'Update' events derived from the state.
     * The index we use here is the "height" of the State.commitLog.
@@ -390,7 +407,7 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
   def uploadArchive(archive: Archive): Unit = {
     commitActorRef ! CommitSubmission(
       allocateEntryId,
-      KeyValueSubmission.archiveToSubmission(archive)
+      KeyValueSubmission.archivesToSubmission(List(archive), "example source description", "example participant id")
     )
   }
 
@@ -453,5 +470,12 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
                               displayName: Option[String]): CompletionStage[PartyAllocationResult] =
     // TODO: Implement party management (does not work yet just like in reference)
     CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
+
+  /** Upload a collection of DAML-LF packages to the ledger. */
+  override def uploadPublicPackages(
+                                     archives: List[Archive],
+                                     sourceDescription: String): CompletionStage[SubmissionResult] =
+    // TODO: Implement this, and remove [[uploadArchive]].
+    CompletableFuture.completedFuture(SubmissionResult.NotSupported)
 
 }

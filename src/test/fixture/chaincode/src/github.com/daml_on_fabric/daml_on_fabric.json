@@ -1,1 +1,1 @@
-{ "version": "1.2", "id": "daml_on_fabric", "type": "golang", "policy": "daml_on_fabric_endorsement.yaml" }
+{ "version": "1.3b", "id": "daml_on_fabric", "type": "golang", "policy": "daml_on_fabric_endorsement.yaml" }

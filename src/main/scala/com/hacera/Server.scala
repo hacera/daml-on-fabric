@@ -8,7 +8,7 @@ import java.io.{File, FileWriter}
 import java.util.zip.ZipFile
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.{Sink}
+import akka.stream.scaladsl.Sink
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Supervision}
 import com.daml.ledger.api.server.damlonx.Server
 import com.daml.ledger.participant.state.index.v1.impl.reference.ReferenceIndexService
@@ -32,7 +32,13 @@ object ExampleServer extends App {
 
   // Initialize Fabric connection
   // this will create the singleton instance and establish the connection
-  val fabricConn = com.hacera.DAMLKVConnector.get
+  val fabricConn = DAMLKVConnector.get(config.roleProvision, config.roleExplorer)
+
+  // If we only want to provision, exit right after
+  if (!config.roleLedger && !config.roleTime && !config.roleExplorer) {
+    logger.info("Hyperledger Fabric provisioning complete.")
+    System.exit(0);
+  }
 
   // Initialize Akka and log exceptions in flows.
   implicit val system: ActorSystem = ActorSystem("DamlonxExampleServer")
@@ -44,58 +50,63 @@ object ExampleServer extends App {
       }
   )
 
-  val ledger = new FabricParticipantState
+  val ledger = new FabricParticipantState(config.roleTime, config.roleLedger)
 
-  def archivesFromDar(file: File): List[Archive] = {
-    DarReader[Archive](x => Try(Archive.parseFrom(x)))
-      .readArchive(new ZipFile(file))
-      .fold(t => throw new RuntimeException(s"Failed to parse DAR from $file", t), dar => dar.all)
-  }
+  if (config.roleLedger) {
+    def archivesFromDar(file: File): List[Archive] = {
+      DarReader[Archive](x => Try(Archive.parseFrom(x)))
+        .readArchive(new ZipFile(file))
+        .fold(t => throw new RuntimeException(s"Failed to parse DAR from $file", t), dar => dar.all)
+    }
 
-  // Parse packages that are already on the chain.
-  // Because we are using ReferenceIndexService, we have to re-upload them
-  val currentPackages = fabricConn.getPackageList
-  currentPackages.foreach { pkgid =>
-    val archive = DamlLf.Archive.parseFrom(fabricConn.getPackage(pkgid))
-    logger.info(s"Found existing archive ${archive.getHash}.")
-    ledger.uploadArchive(archive)
-  }
+    // Parse packages that are already on the chain.
+    // Because we are using ReferenceIndexService, we have to re-upload them
+    val currentPackages = fabricConn.getPackageList
+    currentPackages.foreach { pkgid =>
+      val archive = DamlLf.Archive.parseFrom(fabricConn.getPackage(pkgid))
+      logger.info(s"Found existing archive ${archive.getHash}.")
+      ledger.uploadArchive(archive)
+    }
 
-  // Parse DAR archives given as command-line arguments and upload them
-  // to the ledger using a side-channel.
-  config.archiveFiles.foreach { f =>
-    archivesFromDar(f).foreach { archive =>
-      if (!currentPackages.contains(archive.getHash)) {
-        logger.info(s"Uploading archive ${archive.getHash}...")
-        ledger.uploadArchive(archive)
+    // Parse DAR archives given as command-line arguments and upload them
+    // to the ledger using a side-channel.
+    config.archiveFiles.foreach { f =>
+      archivesFromDar(f).foreach { archive =>
+        if (!currentPackages.contains(archive.getHash)) {
+          logger.info(s"Uploading archive ${archive.getHash}...")
+          ledger.uploadArchive(archive)
+        }
       }
     }
   }
 
-  ledger.getLedgerInitialConditions
-    .runWith(Sink.head)
-    .foreach { initialConditions =>
-      val indexService = ReferenceIndexService(
-        participantReadService = ledger,
-        initialConditions = initialConditions
-      )
+  Runtime.getRuntime.addShutdownHook(new Thread(() => fabricConn.shutdown()))
 
-      val server = Server(
-        serverPort = config.port,
-        sslContext = config.tlsConfig.flatMap(_.server),
-        indexService = indexService,
-        writeService = ledger
-      )
+  if (config.roleLedger) {
+    ledger.getLedgerInitialConditions
+      .runWith(Sink.head)
+      .foreach { initialConditions =>
+        val indexService = ReferenceIndexService(
+          participantReadService = ledger,
+          initialConditions = initialConditions
+        )
 
-      // If port file was provided, write out the allocated server port to it.
-      config.portFile.foreach { f =>
-        val w = new FileWriter(f)
-        w.write(s"${server.port}\n")
-        w.close
-      }
+        val server = Server(
+          serverPort = config.port,
+          sslContext = config.tlsConfig.flatMap(_.server),
+          indexService = indexService,
+          writeService = ledger
+        )
 
-      // Add a hook to close the server. Invoked when Ctrl-C is pressed.
-      Runtime.getRuntime.addShutdownHook(new Thread(() => server.close()))
-      Runtime.getRuntime.addShutdownHook(new Thread(() => fabricConn.shutdown()))
-    }(DirectExecutionContext)
+        // If port file was provided, write out the allocated server port to it.
+        config.portFile.foreach { f =>
+          val w = new FileWriter(f)
+          w.write(s"${server.port}\n")
+          w.close
+        }
+
+        // Add a hook to close the server. Invoked when Ctrl-C is pressed.
+        Runtime.getRuntime.addShutdownHook(new Thread(() => server.close()))
+      }(DirectExecutionContext)
+  }
 }
