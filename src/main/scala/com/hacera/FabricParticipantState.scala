@@ -18,10 +18,10 @@ import com.digitalasset.daml.lf.data.Ref.PackageId
 import com.digitalasset.daml.lf.data.Time.Timestamp
 import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.daml_lf.DamlLf.Archive
-import com.digitalasset.platform.services.time.TimeModel
 import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
 import com.digitalasset.platform.akkastreams.dispatcher.SubSource.{OneAfterAnother}
 import com.daml.ledger.participant.state.kvutils.{KeyValueSubmission}
+import com.daml.ledger.participant.state.backport.TimeModel
 
 import com.daml.ledger.participant.state.kvutils.KeyValueCommitting
 import com.daml.ledger.participant.state.kvutils.KeyValueConsumption
@@ -33,6 +33,7 @@ import scala.collection.breakOut
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import java.util.concurrent.{CompletableFuture, CompletionStage}
+import java.time.{Duration => JDuration}
 
 object FabricParticipantState {
 
@@ -88,7 +89,8 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
   val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
 
   // The ledger configuration
-  private val ledgerConfig = Configuration(timeModel = TimeModel.reasonableDefault)
+  private val ledgerConfig = Configuration(
+        TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get)
 
   // DAML Engine for transaction validation.
   private val engine = Engine()
@@ -188,44 +190,48 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
             s"CommitActor: processing submission ${KeyValueCommitting.prettyEntryId(entryId)}..."
           )
           // Process the submission to produce the log entry and the state updates.
-          val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
-            engine,
-            state.config,
-            entryId,
-            newRecordTime,
-            submission,
-            submission.getInputLogEntriesList.asScala
-              .map(eid => eid -> getLogEntry(state, eid))(breakOut),
-            submission.getInputDamlStateList.asScala
-              .map(key => key -> getDamlState(state, key))(breakOut)
-          )
+          //this.synchronized {
+            val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
+              engine,
+              state.config,
+              entryId,
+              newRecordTime,
+              submission,
+              submission.getInputLogEntriesList.asScala
+                .map(eid => eid -> getLogEntry(state, eid))(breakOut),
+              submission.getInputDamlStateList.asScala
+                .map(key => key -> getDamlState(state, key))(breakOut)
+            )
 
-          // Combine the abstract log entry and the state updates into concrete updates to the store.
-          val allUpdates =
-            damlStateUpdates.map {
-              case (k, v) =>
-                NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(k)) ->
-                  KeyValueCommitting.packDamlStateValue(v)
-            } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
+            // Combine the abstract log entry and the state updates into concrete updates to the store.
+            val allUpdates =
+              damlStateUpdates.map {
+                case (k, v) =>
+                  NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(k)) ->
+                    KeyValueCommitting.packDamlStateValue(v)
+              } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
 
-          logger.trace(
-            s"CommitActor: committing ${KeyValueCommitting.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
-          )
+            logger.trace(
+              s"CommitActor: committing ${KeyValueCommitting.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
+            )
 
-          // Write some state to Fabric
-          for ((k, v) <- allUpdates) {
-            fabricConn.putValue(k.toByteArray, v.toByteArray)
-          }
+            // Write some state to Fabric
+            for ((k, v) <- allUpdates) {
+              fabricConn.putValue(k.toByteArray, v.toByteArray)
+            }
+          //}
 
           // Write commit log to Fabric
           val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
           // Check and write archive
-          if (commit.submission.hasArchive) {
-            var currentArchives = fabricConn.getPackageList
-            val ar = commit.submission.getArchive
-            if (!currentArchives.contains(ar.getHash)) {
-              fabricConn.putPackage(ar.getHash, ar.toByteArray)
+          if (commit.submission.hasPackageUploadEntry) {
+            val archives = commit.submission.getPackageUploadEntry.getArchivesList
+            archives.forEach { ar =>
+              var currentArchives = fabricConn.getPackageList
+              if (!currentArchives.contains(ar.getHash)) {
+                fabricConn.putPackage(ar.getHash, ar.toByteArray)
+              }
             }
           }
 
@@ -390,7 +396,7 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
   def uploadArchive(archive: Archive): Unit = {
     commitActorRef ! CommitSubmission(
       allocateEntryId,
-      KeyValueSubmission.archiveToSubmission(archive)
+      KeyValueSubmission.archivesToSubmission(List(archive), "example source description", "example participant id")
     )
   }
 
@@ -453,5 +459,12 @@ class FabricParticipantState(implicit system: ActorSystem, mat: Materializer)
                               displayName: Option[String]): CompletionStage[PartyAllocationResult] =
     // TODO: Implement party management (does not work yet just like in reference)
     CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
+
+  /** Upload a collection of DAML-LF packages to the ledger. */
+  override def uploadPublicPackages(
+                                     archives: List[Archive],
+                                     sourceDescription: String): CompletionStage[SubmissionResult] =
+    // TODO: Implement this, and remove [[uploadArchive]].
+    CompletableFuture.completedFuture(SubmissionResult.NotSupported)
 
 }

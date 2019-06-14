@@ -283,6 +283,8 @@ public final class FabricContext {
         
     }
     
+    private boolean fabricTimeLogging = false;
+    
     // FabricContext constructor: sets up Fabric and Fabric-CA clients,
     //   loads crypto material for Peer Admin,
     //   initializes channel if needed.
@@ -290,6 +292,8 @@ public final class FabricContext {
 
         // load config from disk
         try {
+            String timingsProp = System.getProperty("fabricTimeLogging");
+            fabricTimeLogging = (timingsProp != null);
             String configPath = System.getProperty("fabricConfigFile", "./config.json");
             config = JsonParser.create().parse(new String(Files.readAllBytes(Paths.get(configPath)), StandardCharsets.UTF_8), FabricContextConfig.class);
             // remap single peer to many peers syntax
@@ -721,6 +725,7 @@ public final class FabricContext {
         
         try {
             
+            long queryStart = System.currentTimeMillis();
             QueryByChaincodeRequest req = fabClient.newQueryProposalRequest();
             req.setChaincodeID(ChaincodeID.newBuilder().setName(ccMetaId).setVersion(ccMetaVersion).build());
             req.setFcn(fcn);
@@ -734,6 +739,7 @@ public final class FabricContext {
                 throw new FabricContextException(makeErrorFromProposalResponse(rsp));
             }
             byte[] result = rsp.getChaincodeActionResponsePayload();
+            if (fabricTimeLogging) System.out.format("queryChaincode (%s) - %dms %n", fcn, System.currentTimeMillis()-queryStart);
             return result;
             
         } catch (Throwable t) {
@@ -759,6 +765,7 @@ public final class FabricContext {
         
         try {
             
+            long invokeStart = System.currentTimeMillis();
             long CC_PROPOSAL_WAIT_TIME = 30000;
             
             TransactionProposalRequest ccInit_req = fabClient.newTransactionProposalRequest();
@@ -788,7 +795,8 @@ public final class FabricContext {
             }
             
             // all ok
-            fabChannel.sendTransaction(ccInit_responses);
+            fabChannel.sendTransaction(ccInit_responses).join();
+            if (fabricTimeLogging) System.out.format("invokeChaincode (%s) - %dms %n", fcn, System.currentTimeMillis()-invokeStart);
             return result;
             
         } catch (Throwable t) {

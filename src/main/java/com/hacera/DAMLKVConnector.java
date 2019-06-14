@@ -43,36 +43,45 @@ public class DAMLKVConnector {
             public String fcn;
             public byte[][] args;
             public DAMLKVCache cacheEntry;
+            public int order;
         }
         
+        public static final int DefaultOrder = 0x7fffffff;
         private final List<DAMLPushJob> jobs = new LinkedList<DAMLPushJob>();
         
         private DAMLPushJob checkJob() {
             synchronized (jobs) {
-                if (!jobs.isEmpty()) {
-                    return jobs.remove(0);
+                // get job with lowest order
+                DAMLPushJob lowJob = null;
+                for (DAMLPushJob job : jobs) {
+                    if (lowJob == null || job.order < lowJob.order) {
+                        lowJob = job;
+                    }
                 }
+                if (lowJob != null) {
+                    jobs.remove(lowJob);
+                }
+                return lowJob;
             }
-            
-            return null;
         }
         
-        public void push(DAMLKVCache cacheEntry, String fcn, byte[]... args) {
+        public void push(int order, DAMLKVCache cacheEntry, String fcn, byte[]... args) {
             DAMLPushJob job = new DAMLPushJob();
             job.fcn = fcn;
             job.args = args;
             job.cacheEntry = cacheEntry;
+            job.order = order;
             synchronized (jobs) {
                 jobs.add(job);
             }
         }
         
-        public void push(DAMLKVCache cacheEntry, String fcn, String... args) {
+        public void push(int order, DAMLKVCache cacheEntry, String fcn, String... args) {
             byte[][] byteArgs = new byte[args.length][];
             for (int i = 0; i < args.length; i++) {
                 byteArgs[i] = args[i].getBytes(StandardCharsets.UTF_8);
             }
-            push(cacheEntry, fcn, byteArgs);
+            push(order, cacheEntry, fcn, byteArgs);
         }
         
         @Override
@@ -113,6 +122,14 @@ public class DAMLKVConnector {
                             System.err.format("This is normally fatal. Consider checking your Fabric connection...%n");
                         }
                     }
+                         
+                    if (job.fcn.equals("WriteCommitLog")) {
+                        try {
+                            Thread.sleep(250);
+                        } catch (InterruptedException e) {
+                            interrupted = true;
+                        }
+                    }
                     
                     if (job.cacheEntry != null) {
                         job.cacheEntry.written = true;
@@ -146,7 +163,7 @@ public class DAMLKVConnector {
                             System.exit(255);
                         }
                     }
-                    
+                   
                 }
                 
                 try {
@@ -168,7 +185,7 @@ public class DAMLKVConnector {
         return Base64.getEncoder().encodeToString(key);
     }
     
-    private static final int MAX_CACHE = 100;
+    private static final int MAX_CACHE = 250;
     private final Map<String, DAMLKVCache> kvCache;
     private final Map<Integer, DAMLKVCache> commitCache;
     DAMLKVCache packageListCache = null;
@@ -226,7 +243,7 @@ public class DAMLKVConnector {
         }
         
         if (!cacheOnly) {
-            pushThread.push(newValue, "RawWrite", key, gzipBytes(value));
+            pushThread.push(DAMLPushThread.DefaultOrder, newValue, "RawWrite", key, gzipBytes(value));
         }
         
         logTime("putValue", init);
@@ -299,7 +316,7 @@ public class DAMLKVConnector {
         int newIndex = ++cacheCommitHeight;
         logTime("putCommit", init);
         DAMLKVCache cacheObject = putCommit(newIndex-1, commit, false);
-        pushThread.push(cacheObject, "WriteCommitLog", new byte[][]{ gzipBytes(commit) });
+        pushThread.push(newIndex-1, cacheObject, "WriteCommitLog", new byte[][]{ gzipBytes(commit) });
         return newIndex;
     }
     
@@ -423,7 +440,7 @@ public class DAMLKVConnector {
         }
         
         if (!cacheOnly) {
-            pushThread.push(newValue, "PackageWrite", cacheKey.getBytes(StandardCharsets.UTF_8), gzipBytes(value));
+            pushThread.push(DAMLPushThread.DefaultOrder, newValue, "PackageWrite", cacheKey.getBytes(StandardCharsets.UTF_8), gzipBytes(value));
             synchronized (this) {
                 packageListCache = null;
             }
