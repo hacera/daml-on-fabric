@@ -1,11 +1,9 @@
 .PHONY: compile format-check test package it
 
 compile:
-	mvn compile assembly:single
 	sbt compile
 
 cleanCompile:
-	mvn clean compile assembly:single
 	sbt clean cleanFiles
 	sbt compile
 
