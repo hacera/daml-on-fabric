@@ -35,22 +35,8 @@ import org.hyperledger.fabric.protos.common.Ledger;
 import org.hyperledger.fabric.protos.common.Policies.Policy;
 import org.hyperledger.fabric.protos.peer.FabricProposalResponse;
 import org.hyperledger.fabric.protos.peer.Query;
-import org.hyperledger.fabric.sdk.ChaincodeEndorsementPolicy;
-import org.hyperledger.fabric.sdk.ChaincodeID;
+import org.hyperledger.fabric.sdk.*;
 import org.hyperledger.fabric.sdk.ChaincodeResponse.Status;
-import org.hyperledger.fabric.sdk.Channel;
-import org.hyperledger.fabric.sdk.ChannelConfiguration;
-import org.hyperledger.fabric.sdk.Enrollment;
-import org.hyperledger.fabric.sdk.HFClient;
-import org.hyperledger.fabric.sdk.InstallProposalRequest;
-import org.hyperledger.fabric.sdk.InstantiateProposalRequest;
-import org.hyperledger.fabric.sdk.Orderer;
-import org.hyperledger.fabric.sdk.Peer;
-import org.hyperledger.fabric.sdk.ProposalResponse;
-import org.hyperledger.fabric.sdk.QueryByChaincodeRequest;
-import org.hyperledger.fabric.sdk.TransactionProposalRequest;
-import org.hyperledger.fabric.sdk.TransactionRequest;
-import org.hyperledger.fabric.sdk.User;
 import org.hyperledger.fabric.sdk.identity.X509Enrollment;
 import org.hyperledger.fabric.sdk.security.CryptoSuite;
 import org.hyperledger.fabric_ca.sdk.HFCAClient;
@@ -60,10 +46,10 @@ import org.hyperledger.fabric_ca.sdk.HFCAClient;
  *   it also generates FabricClient and FabricCAClient instances based on these settings.
  *   for now, settings are hardcoded.
  * It also provides queryChaincode and invokeChaincode methods.
- * 
+ *
  * The known bad side to this code is that it always works on a single endorsing peer.
  * Otherwise, it provides most necessary low-level boilerplate to start working with a Fabric network.
- * 
+ *
  * This class also ensures that:
  *   - we have a valid user context (peer admin by default)
  *   - we have a channel that's created and initialized, with name defined by code (not ready configtx)
@@ -73,14 +59,14 @@ public final class FabricContext {
     private HFClient fabClient;
     private HFCAClient fabCAClient;
     private Channel fabChannel;
-    
+
     //
     private String ccMetaId;
     private String ccMetaVersion;
-    
+
     private final FabricContextConfig config;
     //
-    
+
     // to-do: remove this
     public FabricContextConfig getConfig() {
         return config;
@@ -90,20 +76,20 @@ public final class FabricContext {
         System.out.append(String.format(fmt+"%n", params));
         System.out.flush();
     }
-    
+
     private void debugOut(String fmt, Object param) {
         debugOut(fmt, new Object[]{param});
     }
-    
+
     private Properties createProperties(double timeout, String certFile, String domainOverride) {
-        
+
         Properties props = new Properties();
         // read cert file
         File cert = new File(certFile);
         if (!cert.exists()) {
             throw new FabricContextException(String.format("TLS Certificate for \"%s\" not found or not readable (at %s)", domainOverride, certFile));
         }
-        
+
         // set cert property
         props.setProperty("pemFile", cert.getAbsolutePath());
         props.setProperty("hostnameOverride", domainOverride);
@@ -115,18 +101,18 @@ public final class FabricContext {
         props.put("grpc.NettyChannelBuilderOption.maxInboundMessageSize", 1024*1024*100); // really large inbound message size
 
         return props;
-        
+
     }
 
     private Orderer createOrderer(String ordererURL, String ordererName, String orgName) {
-        
+
         String certFile = String.format("%s/ordererOrganizations/%s/orderers/%s.%s/tls/ca.crt", config.msp, orgName, ordererName, orgName);
-        
+
         try {
-            
+
             Orderer orderer = fabClient.newOrderer(ordererName, ordererURL, createProperties(30, certFile, String.format("%s.%s", ordererName, orgName)));
             return orderer;
-            
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -134,18 +120,18 @@ public final class FabricContext {
                 throw new FabricContextException(t);
             }
         }
-        
+
     }
-    
+
     private Peer createPeer(String peerURL, String peerName, String orgName) {
-        
+
         String certFile = String.format("%s/peerOrganizations/%s/peers/%s.%s/tls/ca.crt", config.msp, orgName, peerName, orgName);
-        
+
         try {
-            
+
             Peer peer = fabClient.newPeer(peerName, peerURL, createProperties(30, certFile, String.format("%s.%s", peerName, orgName)));
             return peer;
-            
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -153,11 +139,11 @@ public final class FabricContext {
                 throw new RuntimeException(t);
             }
         }
-        
+
     }
-    
+
     public FabricUser getPeerAdmin(Peer fabPeer) {
-        
+
         FabricContextConfig.NodeConfig peer = null;
         for (FabricContextConfig.NodeConfig foundPeer : config.peers) {
             String peerName = String.format("%s.%s", foundPeer.name, foundPeer.organization);
@@ -167,48 +153,48 @@ public final class FabricContext {
                 break;
             }
         }
-        
+
         if (peer == null) {
             throw new FabricContextException(String.format("Config not found for peer [%s]!", fabPeer.getName()));
         }
-        
+
         return getPeerAdmin(peer);
-        
+
     }
-    
+
     public FabricUser getPeerAdmin(FabricContextConfig.NodeConfig peer) {
-        
+
         String finalName = String.format("Admin@%s", peer.organization);
         String skPath = String.format("%s/keystore", peer.adminMsp);
         String certPath = String.format("%s/signcerts", peer.adminMsp);
         return getLocalUser("Peer Admin", finalName, skPath, certPath, peer.organization, peer.mspId);
-        
+
     }
-    
+
     public FabricUser getOrdererAdmin() {
-        
+
         String finalName = String.format("Admin@%s", config.orderer.organization);
         String skPath = String.format("%s/keystore", config.orderer.adminMsp);
         String certPath = String.format("%s/signcerts", config.orderer.adminMsp);
         return getLocalUser("Orderer Admin", finalName, skPath, certPath, config.orderer.organization, config.orderer.mspId);
-        
+
     }
-    
+
     public String getChaincodeId() {
         return ccMetaId;
     }
-    
+
     public String getChaincodeVersion() {
         return ccMetaVersion;
     }
-    
+
     private FabricUser getLocalUser(String type, String finalName, String skPath, String certPath, String orgName, String mspid) {
-        
+
         File skFile = null;
         File certFile = null;
-        
+
         try {
-            
+
             // find private key. in theory this can be found somehow... mathematically, but easier to just find it like this
             for (final File ent : new File(skPath).listFiles()) {
                 if (!ent.isFile()) continue;
@@ -217,9 +203,9 @@ public final class FabricContext {
                     break;
                 }
             }
-            
+
             certFile = new File(String.format("%s/%s-cert.pem", certPath, finalName));
-            
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -227,7 +213,7 @@ public final class FabricContext {
                 throw new RuntimeException(t);
             }
         }
-        
+
         if (skFile == null || !skFile.exists() || !certFile.exists()) {
             if (skFile == null || !skFile.exists()) {
                 throw new FabricContextException(String.format("%s private key does not exist at %s", type, (skFile==null)?"<null>":skFile.getAbsolutePath()));
@@ -235,19 +221,19 @@ public final class FabricContext {
                 throw new FabricContextException(String.format("%s signed certificate does not exist at %s", type, certFile.getAbsolutePath()));
             }
         }
-        
+
         // do some debug logging
         debugOut("%s private key: %s", type, skFile.getAbsolutePath());
         debugOut("%s sign cert: %s", type, certFile.getAbsolutePath());
-        
+
         // read in the cert
         String certPem = "";
         String skPem = "";
         try {
-            
+
             skPem = new String(Files.readAllBytes(Paths.get(skFile.getAbsolutePath())), StandardCharsets.UTF_8);
             certPem = new String(Files.readAllBytes(Paths.get(certFile.getAbsolutePath())), StandardCharsets.UTF_8);
-            
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -255,7 +241,7 @@ public final class FabricContext {
                 throw new RuntimeException(t);
             }
         }
-        
+
         // read in the private key.
         // tbh, in JS this is expressed with 2-3 lines...
         skPem = skPem.replace("-----BEGIN PRIVATE KEY-----\n", "");
@@ -268,7 +254,7 @@ public final class FabricContext {
             KeyFactory kf = KeyFactory.getInstance("EC");
             PKCS8EncodedKeySpec skSpec = new PKCS8EncodedKeySpec(skEncoded);
             skObject = kf.generatePrivate(skSpec);
-            
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -276,19 +262,19 @@ public final class FabricContext {
                 throw new RuntimeException(t);
             }
         }
-        
+
         Enrollment e = new X509Enrollment(skObject, certPem);
         FabricUser u = new FabricUser("Admin", orgName, e, mspid); // to-do: store the 'Org1MSP' in the config
         return u;
-        
+
     }
-    
+
     private boolean fabricTimeLogging = false;
-    
+
     // FabricContext constructor: sets up Fabric and Fabric-CA clients,
     //   loads crypto material for Peer Admin,
     //   initializes channel if needed.
-    public FabricContext() {
+    public FabricContext(boolean doCreateChannel) {
 
         // load config from disk
         try {
@@ -310,17 +296,20 @@ public final class FabricContext {
         } catch (IOException e) {
             throw new FabricContextException(e);
         }
-        
+
+        // load meta from disk
+        readMeta();
+
         try {
 
             fabClient = HFClient.createNewInstance();
             fabCAClient = HFCAClient.createNewInstance(config.ca.name, config.ca.url, null);
-            
+
             // for now - local
             CryptoSuite cryptoSuite = CryptoSuite.Factory.getCryptoSuite();
             fabClient.setCryptoSuite(cryptoSuite);
             fabCAClient.setCryptoSuite(cryptoSuite);
-            
+
             // set user context to some dummy user
             fabClient.setUserContext(getOrdererAdmin());
 
@@ -331,7 +320,7 @@ public final class FabricContext {
                 // ===================================================================
                 //  This block sets up an EXISTING channel (with current peer joined)
                 // ===================================================================
-                
+
                 // create Orderer and Peer objects from MSP
                 Orderer ord = createOrderer(config.orderer.url, config.orderer.name, config.orderer.organization);
                 List<Peer> peers = new LinkedList<Peer>();
@@ -340,20 +329,20 @@ public final class FabricContext {
                 }
                 Channel channel = fabClient.newChannel(config.channelId);
                 channel.addOrderer(ord);
-                
+
                 // try to connect to Fabric
                 channel.initialize();
                 // try to check if channel exists, and add peer
                 try {
-                    
+
                     // check if peer is already joined to the channel.
                     // if not, join it
                     for (Peer peer : peers) {
-                        
+
                         // set user context to peer admin
                         User peerAdmin = getPeerAdmin(peer);
                         fabClient.setUserContext(peerAdmin);
-                        
+
                         Set<String> knownChannels = fabClient.queryChannels(peer);
                         debugOut("knownChannels for [%s] = %s", peer.getName(), knownChannels);
                         if (knownChannels.contains(config.channelId)) {
@@ -364,27 +353,31 @@ public final class FabricContext {
 
                         channel.queryInstantiatedChaincodes(peer); // this WILL fail if channel does not exist... ;)
                     }
-                    
+
                 } catch (Throwable tex) {
                     channel.shutdown(true);
                     throw tex;
                 }
-                
+
                 fabChannel = channel;
-                
+
             } catch (Throwable tex) { // if we caught this exception, it most likely means the channel is not there
-                
+
+                if (!doCreateChannel) {
+                    throw new FabricContextException(String.format("Fatal: Channel '%s' does not exist and not specified to be created", config.channelId));
+                }
+
                 // ==================================================================================
                 //  This block sets up a NEW channel (since it doesn't exist) and joins current peer
                 // ==================================================================================
-                
+
                 // create Orderer and Peer objects from MSP
                 Orderer ord = createOrderer(config.orderer.url, config.orderer.name, config.orderer.organization);
                 List<Peer> peers = new LinkedList<Peer>();
                 for (FabricContextConfig.NodeConfig confPeer : config.peers) {
                     peers.add(createPeer(confPeer.url, confPeer.name, confPeer.organization));
                 }
-                
+
                 // make channel config. again, in JS this is so much easier...
                 Capabilities caps = Capabilities.newBuilder()
                         .putCapabilities("V1_3", Capability.getDefaultInstance())
@@ -393,91 +386,91 @@ public final class FabricContext {
                 ConfigUpdate configUpdate = ConfigUpdate.newBuilder()
                         .setChannelId(config.channelId)
                         .setReadSet(ConfigGroup.newBuilder()
-                            .setVersion(0)
-                            .putGroups("Application", ConfigGroup.newBuilder()
                                 .setVersion(0)
-                                .putGroups("Org1MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org2MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org3MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org4MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org5MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
+                                .putGroups("Application", ConfigGroup.newBuilder()
+                                        .setVersion(0)
+                                        .putGroups("Org1MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org2MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org3MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org4MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org5MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .build())
+                                .putValues("Consortium", ConfigValue.newBuilder()
+                                        .setVersion(0)
+                                        .build())
                                 .build())
-                            .putValues("Consortium", ConfigValue.newBuilder()
-                                .setVersion(0)
-                                .build())
-                            .build())
                         .setWriteSet(ConfigGroup.newBuilder()
-                            .setVersion(0)
-                            .putGroups("Application", ConfigGroup.newBuilder()
-                                .setVersion(1)
-                                .putGroups("Org1MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org2MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org3MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org4MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putGroups("Org5MSP", ConfigGroup.newBuilder()
-                                    .setVersion(0)
-                                    .setModPolicy("")
-                                    .build())
-                                .putValues("Capabilities", ConfigValue.newBuilder()
-                                    .setVersion(0)
-                                    .setValue(channelCaps)
-                                    .setModPolicy("Admins")
-                                    .build())
-                                .putPolicies("Admins", ConfigPolicy.newBuilder()
-                                    .setPolicy(Policy.newBuilder()
-                                        .setType(1) // this is an empty policy of type SignaturePolicy
-                                        .setValue(ByteString.copyFrom(new byte[]{0x12, 0x0c, 0x12, 0x0a, 0x08, 0x02, 0x12, 0x02, 0x08, 0x00, 0x12, 0x02, 0x08, 0x01, 0x1a, 0x0b, 0x12, 0x09, 0x0a, 0x07, 0x4f, 0x72, 0x67, 0x31, 0x4d, 0x53, 0x50, 0x1a, 0x0b, 0x12, 0x09, 0x0a, 0x07, 0x4f, 0x72, 0x67, 0x32, 0x4d, 0x53, 0x50}))
-                                        .build())
-                                    .setModPolicy("Admins")
-                                    .build())
-                                .putPolicies("Readers", ConfigPolicy.newBuilder()
-                                    .setPolicy(Policy.newBuilder()
-                                        .setType(3)
-                                        .setValue(ByteString.copyFrom(new byte[]{0x0a, 0x07, 0x52, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73}))
-                                        .build())
-                                    .setModPolicy("Admins")
-                                    .build())
-                                .putPolicies("Writers", ConfigPolicy.newBuilder()
-                                    .setPolicy(Policy.newBuilder()
-                                        .setType(3)
-                                        .setValue(ByteString.copyFrom(new byte[]{0x0a, 0x07, 0x57, 0x72, 0x69, 0x74, 0x65, 0x72, 0x73}))
-                                        .build())
-                                    .setModPolicy("Admins")
-                                    .build())
-                                .setModPolicy("Admins")
-                                .build())
-                            .putValues("Consortium", ConfigValue.newBuilder()
                                 .setVersion(0)
-                                .setValue(ByteString.copyFrom(new byte[]{0x0a, 0x10, 0x53, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x43, 0x6f, 0x6e, 0x73, 0x6f, 0x72, 0x74, 0x69, 0x75, 0x6d}))
+                                .putGroups("Application", ConfigGroup.newBuilder()
+                                        .setVersion(1)
+                                        .putGroups("Org1MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org2MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org3MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org4MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putGroups("Org5MSP", ConfigGroup.newBuilder()
+                                                .setVersion(0)
+                                                .setModPolicy("")
+                                                .build())
+                                        .putValues("Capabilities", ConfigValue.newBuilder()
+                                                .setVersion(0)
+                                                .setValue(channelCaps)
+                                                .setModPolicy("Admins")
+                                                .build())
+                                        .putPolicies("Admins", ConfigPolicy.newBuilder()
+                                                .setPolicy(Policy.newBuilder()
+                                                        .setType(1) // this is an empty policy of type SignaturePolicy
+                                                        .setValue(ByteString.copyFrom(new byte[]{0x12, 0x0c, 0x12, 0x0a, 0x08, 0x02, 0x12, 0x02, 0x08, 0x00, 0x12, 0x02, 0x08, 0x01, 0x1a, 0x0b, 0x12, 0x09, 0x0a, 0x07, 0x4f, 0x72, 0x67, 0x31, 0x4d, 0x53, 0x50, 0x1a, 0x0b, 0x12, 0x09, 0x0a, 0x07, 0x4f, 0x72, 0x67, 0x32, 0x4d, 0x53, 0x50}))
+                                                        .build())
+                                                .setModPolicy("Admins")
+                                                .build())
+                                        .putPolicies("Readers", ConfigPolicy.newBuilder()
+                                                .setPolicy(Policy.newBuilder()
+                                                        .setType(3)
+                                                        .setValue(ByteString.copyFrom(new byte[]{0x0a, 0x07, 0x52, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73}))
+                                                        .build())
+                                                .setModPolicy("Admins")
+                                                .build())
+                                        .putPolicies("Writers", ConfigPolicy.newBuilder()
+                                                .setPolicy(Policy.newBuilder()
+                                                        .setType(3)
+                                                        .setValue(ByteString.copyFrom(new byte[]{0x0a, 0x07, 0x57, 0x72, 0x69, 0x74, 0x65, 0x72, 0x73}))
+                                                        .build())
+                                                .setModPolicy("Admins")
+                                                .build())
+                                        .setModPolicy("Admins")
+                                        .build())
+                                .putValues("Consortium", ConfigValue.newBuilder()
+                                        .setVersion(0)
+                                        .setValue(ByteString.copyFrom(new byte[]{0x0a, 0x10, 0x53, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x43, 0x6f, 0x6e, 0x73, 0x6f, 0x72, 0x74, 0x69, 0x75, 0x6d}))
+                                        .build())
                                 .build())
-                            .build())
                         .build();
 
                 // construct very limited tx
@@ -487,18 +480,18 @@ public final class FabricContext {
                         .build();
                 ConfigUpdateEnvelope ccuEnv = ConfigUpdateEnvelope.newBuilder().setConfigUpdate(configUpdate.toByteString()).build();
                 Payload channelPayload = Payload.newBuilder()
-                    .setHeader(Header.newBuilder()
-                        .setChannelHeader(channelHeader.toByteString())
-                        .build())
-                    .setData(ccuEnv.toByteString())
-                    .build();
+                        .setHeader(Header.newBuilder()
+                                .setChannelHeader(channelHeader.toByteString())
+                                .build())
+                        .setData(ccuEnv.toByteString())
+                        .build();
                 Envelope cEnv = Envelope.newBuilder().setPayload(channelPayload.toByteString()).build();
 
                 ChannelConfiguration channelConfig = new ChannelConfiguration(cEnv.toByteArray());
                 //User ordererAdmin = getOrdererAdmin();
                 //byte[] channelConfigSignature = fabClient.getChannelConfigurationSignature(channelConfig, ordererAdmin);
                 byte[][] channelConfigSignaturesByPeerAdmin = new byte[peers.size()][];
-                
+
                 int i = 0;
                 for (Peer peer : peers) {
                     User peerAdmin = getPeerAdmin(peer);
@@ -515,9 +508,9 @@ public final class FabricContext {
                 }
 
                 fabChannel = channel.initialize();
-                
+
             }
-            
+
             // set user context to admin of peer0
             fabClient.setUserContext(getPeerAdmin(config.peers.get(0)));
 
@@ -528,7 +521,7 @@ public final class FabricContext {
                 throw new FabricContextException(t);
             }
         }
-        
+
     }
 
     public HFClient getClient() {
@@ -542,7 +535,7 @@ public final class FabricContext {
     public Channel getChannel() {
         return fabChannel;
     }
-    
+
     // for JSON
     private static class ChaincodeMetaConfig {
         String id;
@@ -554,20 +547,33 @@ public final class FabricContext {
             //
         }
     }
-    
+
+    private ChaincodeMetaConfig metaConfig;
+    private ChaincodeMetaConfig readMeta() {
+        if (metaConfig == null) {
+            try {
+                String metaString = new String(Files.readAllBytes(Paths.get(config.chaincode.meta)), StandardCharsets.UTF_8);
+                metaConfig = new JsonParser().parse(metaString, ChaincodeMetaConfig.class);
+                ccMetaId = metaConfig.id;
+                ccMetaVersion = metaConfig.version;
+            } catch (IOException e) {
+                throw new FabricContextException(e);
+            }
+        }
+
+        return metaConfig;
+    }
+
     public void ensureChaincode() {
         try {
 
-            long CC_PROPOSAL_WAIT_TIME = 120000; // in ms
+            long CC_PROPOSAL_WAIT_TIME = 300000; // in ms
 
             //
             // read in the meta config
-            String metaString = new String(Files.readAllBytes(Paths.get(config.chaincode.meta)), StandardCharsets.UTF_8);
-            String metaDir = new File(config.chaincode.meta).getParent();
-            ChaincodeMetaConfig meta = new JsonParser().parse(metaString, ChaincodeMetaConfig.class);
+            //String metaDir = new File(config.chaincode.meta).getParent();
+            ChaincodeMetaConfig meta = readMeta();
             String ccLabel = String.format("%s:%s", meta.id, meta.version);
-            ccMetaId = meta.id;
-            ccMetaVersion = meta.version;
 
             debugOut("Read chaincode meta from %s, chaincode = %s : version %s", config.chaincode.meta, ccMetaId, ccMetaVersion);
 
@@ -579,16 +585,16 @@ public final class FabricContext {
             else if (meta.type.compareToIgnoreCase("node") == 0)
                 ccMetaType = TransactionRequest.Type.NODE;
             else throw new FabricContextException(String.format("Invalid chaincode type '%s'", meta.type));
-            
+
             Collection<Peer> peers = fabChannel.getPeers();
             for (Peer peer : peers) {
-            
+
                 User peerAdmin = getPeerAdmin(peer);
                 fabClient.setUserContext(peerAdmin);
-                
+
                 // We may use v2.0 lifecycle, but it seems mutually incompatible with Idemix+x509 MSP configuration.
                 // Alternatively it's compatible but not documented enough to work.
-                
+
                 debugOut("Ensuring installed chaincode on peer [%s]", peer.getName());
                 List<Peer> singlePeerList = new LinkedList<Peer>(); // for proposals
                 singlePeerList.add(peer);
@@ -622,10 +628,16 @@ public final class FabricContext {
 
                     }
 
-                    ChaincodeID chaincodeId = ChaincodeID.newBuilder().setName(meta.id).setVersion(meta.version).setPath(config.chaincode.entryPath).build();
+                    ChaincodeID.Builder chaincodeIdBuilder = ChaincodeID.newBuilder().setName(meta.id).setVersion(meta.version);
+                    if (config.chaincode.entryPath != null) {
+                        chaincodeIdBuilder.setPath(config.chaincode.entryPath);
+                    }
+                    ChaincodeID chaincodeId = chaincodeIdBuilder.build();
                     InstallProposalRequest ccInstall_req = fabClient.newInstallProposalRequest();
                     ccInstall_req.setChaincodeID(chaincodeId);
-                    ccInstall_req.setChaincodeSourceLocation(new File(config.chaincode.gopath));
+                    if (config.chaincode.gopath != null) {
+                        ccInstall_req.setChaincodeSourceLocation(new File(config.chaincode.gopath));
+                    }
                     ccInstall_req.setChaincodeLanguage(ccMetaType);
                     // id is enough?
                     ccInstall_req.setProposalWaitTime(CC_PROPOSAL_WAIT_TIME);
@@ -636,7 +648,7 @@ public final class FabricContext {
                     }
 
                 }
-                
+
                 debugOut("Ensuring instantiated chaincode on peer [%s]", peer.getName());
 
                 // check if chaincode is instantiated
@@ -664,30 +676,42 @@ public final class FabricContext {
                         debugOut("Instantiating chaincode %s", ccLabel);
                     }
 
-                    InstantiateProposalRequest ccInstantiate_req = fabClient.newInstantiationProposalRequest();
-                    ccInstantiate_req.setProposalWaitTime(CC_PROPOSAL_WAIT_TIME);
-                    ccInstantiate_req.setChaincodeID(ChaincodeID.newBuilder().setName(meta.id).setVersion(meta.version).build());
-                    ccInstantiate_req.setArgs(new String[]{});
+                    Collection<ProposalResponse> responses;
                     if (needInit) {
+                        InstantiateProposalRequest ccInstantiate_req = fabClient.newInstantiationProposalRequest();
+                        ccInstantiate_req.setProposalWaitTime(CC_PROPOSAL_WAIT_TIME);
+                        ccInstantiate_req.setChaincodeID(ChaincodeID.newBuilder().setName(meta.id).setVersion(meta.version).build());
+                        ccInstantiate_req.setArgs(new String[]{});
                         ChaincodeEndorsementPolicy policy = new ChaincodeEndorsementPolicy();
                         policy.fromYamlFile(new File(config.endorsementPolicy));
                         ccInstantiate_req.setChaincodeEndorsementPolicy(policy);
-                        ccInstantiate_req.setFcn("Init");
+                        ccInstantiate_req.setFcn("init");
+                        responses = fabChannel.sendInstantiationProposal(ccInstantiate_req, singlePeerList);
+                    } else {
+                        UpgradeProposalRequest ccUpgrade_req = fabClient.newUpgradeProposalRequest();
+                        ccUpgrade_req.setProposalWaitTime(CC_PROPOSAL_WAIT_TIME);
+                        ccUpgrade_req.setChaincodeID(ChaincodeID.newBuilder().setName(meta.id).setVersion(meta.version).build());
+                        ccUpgrade_req.setArgs(new String[]{});
+                        ChaincodeEndorsementPolicy policy = new ChaincodeEndorsementPolicy();
+                        policy.fromYamlFile(new File(config.endorsementPolicy));
+                        ccUpgrade_req.setChaincodeEndorsementPolicy(policy);
+                        ccUpgrade_req.setFcn("init");
+                        responses = fabChannel.sendUpgradeProposal(ccUpgrade_req, singlePeerList);
                     }
-                    Collection<ProposalResponse> ccInstantiate_responses = fabChannel.sendInstantiationProposal(ccInstantiate_req, singlePeerList);
-                    ProposalResponse rsp = ccInstantiate_responses.iterator().next();
+
+                    ProposalResponse rsp = responses.iterator().next();
                     if (rsp.getStatus() != Status.SUCCESS) {
                         throw new FabricContextException(String.format("Chaincode instantiation failed with code %d (%s)", rsp.getStatus().getStatus(), rsp.getMessage()));
                     }
-                    fabChannel.sendTransaction(ccInstantiate_responses).join();
+                    fabChannel.sendTransaction(responses).join();
 
                 }
-                
+
             }
-            
+
             // set user context to admin of peer0
             fabClient.setUserContext(getPeerAdmin(config.peers.get(0)));
-        
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -695,20 +719,20 @@ public final class FabricContext {
                 throw new FabricContextException(t);
             }
         }
-        
+
     }
-    
+
     private String makeErrorFromProposalResponse(ProposalResponse rsp) {
         FabricProposalResponse.ProposalResponse rsp2 = rsp.getProposalResponse();
         if (rsp2 != null) {
             return rsp2.toString();
         }
-        
+
         int status = rsp.getStatus().getStatus();
         String message = rsp.getMessage();
         return String.format("Chaincode returned status %d (%s)", status, message);
     }
-    
+
     private byte[][] convertChaincodeArgs(String[] args) {
         byte[][] byteArgs = new byte[args.length][];
         for (int i = 0; i < args.length; i++) {
@@ -716,20 +740,21 @@ public final class FabricContext {
         }
         return byteArgs;
     }
-    
+
     public byte[] queryChaincode(String fcn, String... args) {
         return queryChaincode(fcn, convertChaincodeArgs(args));
     }
-    
+
     public byte[] queryChaincode(String fcn, byte[]... args) {
-        
+
         try {
-            
+
             long queryStart = System.currentTimeMillis();
             QueryByChaincodeRequest req = fabClient.newQueryProposalRequest();
             req.setChaincodeID(ChaincodeID.newBuilder().setName(ccMetaId).setVersion(ccMetaVersion).build());
             req.setFcn(fcn);
             req.setArgs(args);
+            req.setProposalWaitTime(300000);
             List<Peer> singlePeerList = new LinkedList<Peer>();
             singlePeerList.add(fabChannel.getPeers().iterator().next());
             Collection<ProposalResponse> responses = fabChannel.queryByChaincode(req, singlePeerList);
@@ -741,41 +766,39 @@ public final class FabricContext {
             byte[] result = rsp.getChaincodeActionResponsePayload();
             if (fabricTimeLogging) System.out.format("queryChaincode (%s) - %dms %n", fcn, System.currentTimeMillis()-queryStart);
             return result;
-            
+
         } catch (Throwable t) {
-            t.printStackTrace(System.err);
+            //t.printStackTrace(System.err);
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
             } else {
                 throw new FabricContextException(t);
             }
         }
-        
+
     }
-    
+
     public byte[] queryChaincode(String fcn) {
         return queryChaincode(fcn, new String[]{});
     }
-    
+
     public byte[] invokeChaincode(String fcn, String... args) {
         return invokeChaincode(fcn, convertChaincodeArgs(args));
     }
-    
+
     public byte[] invokeChaincode(String fcn, byte[]... args) {
-        
+
         try {
-            
+
             long invokeStart = System.currentTimeMillis();
-            long CC_PROPOSAL_WAIT_TIME = 30000;
-            
+            long CC_PROPOSAL_WAIT_TIME = 300000;
+
             TransactionProposalRequest ccInit_req = fabClient.newTransactionProposalRequest();
             ccInit_req.setChaincodeID(ChaincodeID.newBuilder().setName(ccMetaId).setVersion(ccMetaVersion).build());
             ccInit_req.setFcn(fcn);
             ccInit_req.setArgs(args);
-            if (fcn.compareToIgnoreCase("init") == 0) {
-                ccInit_req.setProposalWaitTime(CC_PROPOSAL_WAIT_TIME);
-            }
-            
+            ccInit_req.setProposalWaitTime(CC_PROPOSAL_WAIT_TIME);
+
             // no args
             byte[] result = null; // should be exactly one, even though we are iterating.
             Collection<ProposalResponse> ccInit_responses = fabChannel.sendTransactionProposal(ccInit_req);
@@ -793,14 +816,14 @@ public final class FabricContext {
                     }
                 }
             }
-            
+
             // all ok
             fabChannel.sendTransaction(ccInit_responses).join();
             if (fabricTimeLogging) System.out.format("invokeChaincode (%s) - %dms %n", fcn, System.currentTimeMillis()-invokeStart);
             return result;
-            
+
         } catch (Throwable t) {
-            t.printStackTrace(System.err);
+            //t.printStackTrace(System.err);
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
             } else {
@@ -809,15 +832,15 @@ public final class FabricContext {
         }
 
     }
-    
+
     public byte[] invokeChaincode(String fcn) {
         return invokeChaincode(fcn, new String[]{});
     }
-    
+
     public byte[] querySystemChaincode(String cc, String fcn, String... args) {
-        
+
         try {
-            
+
             QueryByChaincodeRequest req = fabClient.newQueryProposalRequest();
             req.setChaincodeID(ChaincodeID.newBuilder().setName(cc).build());
             req.setFcn(fcn);
@@ -830,7 +853,7 @@ public final class FabricContext {
             }
             byte[] result = rsp.getChaincodeActionResponsePayload();
             return result;
-            
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -838,12 +861,12 @@ public final class FabricContext {
                 throw new FabricContextException(t);
             }
         }
-        
+
     }
-    
+
     public long queryBlockHeight(Peer p) {
         try {
-            
+
             QueryByChaincodeRequest req = fabClient.newQueryProposalRequest();
             req.setChaincodeID(ChaincodeID.newBuilder().setName("qscc").build());
             req.setFcn("GetChainInfo");
@@ -860,7 +883,7 @@ public final class FabricContext {
             Ledger.BlockchainInfo info = Ledger.BlockchainInfo.parseFrom(result);
             long channelHeight = info.getHeight();
             return channelHeight;
-            
+
         } catch (Throwable t) {
             if (RuntimeException.class.isAssignableFrom(t.getClass())) {
                 throw (RuntimeException)t;
@@ -869,12 +892,12 @@ public final class FabricContext {
             }
         }
     }
-    
+
     // ensureEndorsersInSync, but with default timeout (30 seconds)
     public void ensureEndorsersInSync() throws InterruptedException {
         ensureEndorsersInSync(30000);
     }
-    
+
     // ensureEndorsersInSync waits until block height is equal for all endorsing peers
     public void ensureEndorsersInSync(long timeout) throws InterruptedException {
         final long syncTimeout = 30000;
@@ -892,15 +915,15 @@ public final class FabricContext {
                     break;
                 }
             }
-            
+
             if (heightMatch) {
                 break;
             }
-            
+
             Thread.sleep(250);
         }
     }
-    
+
     public void shutdown() {
         fabChannel.shutdown(true);
         fabChannel = null;

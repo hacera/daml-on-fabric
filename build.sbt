@@ -42,7 +42,9 @@ lazy val root = (project in file("."))
       "com.daml.ledger" %% "participant-state" % sdkVersion,
       "com.daml.ledger" %% "participant-state-kvutils" % sdkVersion,
       "com.github.scopt" %% "scopt" % "4.0.0-RC2",
+      "org.hyperledger.fabric-sdk-java" % "fabric-sdk-java" % "1.4.1",
+      "org.jodd" % "jodd-json" % "5.0.12",
+      "com.google.protobuf" % "protobuf-java-util" % "3.7.1", //  in current setup: need to ALWAYS use the same version as fabric-sdk-java
     ),
     resolvers += "Digital Asset SDK" at "https://digitalassetsdk.bintray.com/DigitalAssetSDK"
   )
-

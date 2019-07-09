@@ -24,6 +24,7 @@ const (
 	_packagesList    = "DPackagesList"
 	_packagesStart   = _prefixPackages + "0000000000000000000000000000000000000000000000000000000000000000"
 	_packagesEnd     = _prefixPackages + "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	_recordTime      = "DRecordTime"
 )
 
 // DamlOnFabric implements storage of DAML data on Fabric
@@ -74,6 +75,14 @@ func (t *DamlOnFabric) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 	} else if function == "PackageListRead" {
 
 		return t.packageListRead(stub, args, rawArgs)
+
+	} else if function == "RecordTimeWrite" {
+
+		return t.recordTimeWrite(stub, args, rawArgs)
+
+	} else if function == "RecordTimeRead" {
+
+		return t.recordTimeRead(stub, args, rawArgs)
 
 	}
 
@@ -301,6 +310,38 @@ func (t *DamlOnFabric) packageListRead(stub shim.ChaincodeStubInterface, args []
 
 	binary.LittleEndian.PutUint32(output[0:4], uint32(count))
 	return shim.Success(output)
+
+}
+
+// recordTimeWrite:
+func (t *DamlOnFabric) recordTimeWrite(stub shim.ChaincodeStubInterface, args []string, rawArgs [][]byte) pb.Response {
+
+	if len(rawArgs) != 1 {
+		return shim.Error(fmt.Sprintf("Expected 1 argument (RecordTime), got %d", len(args)))
+	}
+
+	err := stub.PutState(_recordTime, rawArgs[0])
+	if err != nil {
+		return shim.Error(fmt.Sprintf("Error writing Fabric state: %s", err.Error()))
+	}
+
+	return shim.Success(rawArgs[0])
+
+}
+
+// recordTimeRead:
+func (t *DamlOnFabric) recordTimeRead(stub shim.ChaincodeStubInterface, args []string, rawArgs [][]byte) pb.Response {
+
+	if len(rawArgs) != 0 {
+		return shim.Error(fmt.Sprintf("Expected no arguments, got %d", len(rawArgs)))
+	}
+
+	rt, err := stub.GetState(_recordTime)
+	if err != nil {
+		return shim.Error(fmt.Sprintf("Error reading Fabric state: %s", err.Error()))
+	}
+
+	return shim.Success(rt)
 
 }
 
