@@ -79,6 +79,7 @@ $ ./restart_fabric.sh
 
 ```
 $ cd
+$ rm -rf quickstart
 $ daml new quickstart quickstart-java
 Created a new project in "quickstart" based on the template "quickstart-java".
 $ cd ~/quickstart/

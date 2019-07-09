@@ -58,8 +58,10 @@ object FabricParticipantState {
 /** Implementation of the participant-state [[ReadService]] and [[WriteService]] using
   * the key-value utilities and a Fabric store.
   */
-class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit system: ActorSystem, mat: Materializer)
-    extends ReadService
+class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
+    implicit system: ActorSystem,
+    mat: Materializer
+) extends ReadService
     with WriteService
     with AutoCloseable {
   import FabricParticipantState._
@@ -71,7 +73,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit sy
 
   // The ledger configuration
   private val ledgerConfig = Configuration(
-        TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get)
+    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get
+  )
 
   // DAML Engine for transaction validation.
   private val engine = Engine()
@@ -163,34 +166,34 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit sy
           )
           // Process the submission to produce the log entry and the state updates.
           //this.synchronized {
-            val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
-              engine,
-              state.config,
-              entryId,
-              newRecordTime,
-              submission,
-              submission.getInputLogEntriesList.asScala
-                .map(eid => eid -> getLogEntry(state, eid))(breakOut),
-              submission.getInputDamlStateList.asScala
-                .map(key => key -> getDamlState(state, key))(breakOut)
-            )
+          val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
+            engine,
+            state.config,
+            entryId,
+            newRecordTime,
+            submission,
+            submission.getInputLogEntriesList.asScala
+              .map(eid => eid -> getLogEntry(state, eid))(breakOut),
+            submission.getInputDamlStateList.asScala
+              .map(key => key -> getDamlState(state, key))(breakOut)
+          )
 
-            // Combine the abstract log entry and the state updates into concrete updates to the store.
-            val allUpdates =
-              damlStateUpdates.map {
-                case (k, v) =>
-                  NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(k)) ->
-                    KeyValueCommitting.packDamlStateValue(v)
-              } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
+          // Combine the abstract log entry and the state updates into concrete updates to the store.
+          val allUpdates =
+            damlStateUpdates.map {
+              case (k, v) =>
+                NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(k)) ->
+                  KeyValueCommitting.packDamlStateValue(v)
+            } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
 
-            logger.trace(
-              s"CommitActor: committing ${KeyValueCommitting.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
-            )
+          logger.trace(
+            s"CommitActor: committing ${KeyValueCommitting.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
+          )
 
-            // Write some state to Fabric
-            for ((k, v) <- allUpdates) {
-              fabricConn.putValue(k.toByteArray, v.toByteArray)
-            }
+          // Write some state to Fabric
+          for ((k, v) <- allUpdates) {
+            fabricConn.putValue(k.toByteArray, v.toByteArray)
+          }
           //}
 
           // Write commit log to Fabric
@@ -387,7 +390,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit sy
       // [[DamlSubmission]] contains the serialized transaction and metadata such as
       // the input contracts and other state required to validate the transaction.
       val submission =
-      KeyValueSubmission.transactionToSubmission(submitterInfo, transactionMeta, transaction)
+        KeyValueSubmission.transactionToSubmission(submitterInfo, transactionMeta, transaction)
 
       // Send the [[DamlSubmission]] to the commit actor. The messages are
       // queued and the actor's receive method is invoked sequentially with
@@ -407,7 +410,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit sy
   def uploadArchive(archive: Archive): Unit = {
     commitActorRef ! CommitSubmission(
       allocateEntryId,
-      KeyValueSubmission.archivesToSubmission(List(archive), "example source description", "example participant id")
+      KeyValueSubmission
+        .archivesToSubmission(List(archive), "example source description", "example participant id")
     )
   }
 
@@ -438,7 +442,9 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit sy
 
   private def getDamlState(state: State, key: DamlStateKey): Option[DamlStateValue] = {
 
-    val entryBytes = fabricConn.getValue(NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray)
+    val entryBytes = fabricConn.getValue(
+      NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray
+    )
     if (entryBytes == null || entryBytes.isEmpty)
       return Option[DamlStateValue](null)
     return Option[DamlStateValue](DamlStateValue.parseFrom(entryBytes))
@@ -466,15 +472,17 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(implicit sy
 
   /** Allocate a party on the ledger */
   override def allocateParty(
-                              hint: Option[String],
-                              displayName: Option[String]): CompletionStage[PartyAllocationResult] =
+      hint: Option[String],
+      displayName: Option[String]
+  ): CompletionStage[PartyAllocationResult] =
     // TODO: Implement party management (does not work yet just like in reference)
     CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
 
   /** Upload a collection of DAML-LF packages to the ledger. */
   override def uploadPublicPackages(
-                                     archives: List[Archive],
-                                     sourceDescription: String): CompletionStage[SubmissionResult] =
+      archives: List[Archive],
+      sourceDescription: String
+  ): CompletionStage[SubmissionResult] =
     // TODO: Implement this, and remove [[uploadArchive]].
     CompletableFuture.completedFuture(SubmissionResult.NotSupported)
 
