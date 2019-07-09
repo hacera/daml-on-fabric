@@ -8,15 +8,15 @@ import java.io.File
 import com.digitalasset.ledger.api.tls.TlsConfiguration
 
 final case class Config(
-                         port: Int,
-                         portFile: Option[File],
-                         archiveFiles: List[File],
-                         tlsConfig: Option[TlsConfiguration],
-                         roleLedger: Boolean,
-                         roleTime: Boolean,
-                         roleProvision: Boolean,
-                         roleExplorer: Boolean
-                       )
+    port: Int,
+    portFile: Option[File],
+    archiveFiles: List[File],
+    tlsConfig: Option[TlsConfiguration],
+    roleLedger: Boolean,
+    roleTime: Boolean,
+    roleProvision: Boolean,
+    roleExplorer: Boolean
+)
 
 object Config {
   def default: Config =

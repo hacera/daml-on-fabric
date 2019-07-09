@@ -60,11 +60,13 @@ object Cli {
       .text("TLS: The crt file to be used as the the trusted root CA.")
       .action(cacrtConfig)
     opt[String]("role")
-      .text("Role to start the application as. Supported values (may be multiple values separated by a comma):\n" +
-        "                         ledger: run a Ledger API service\n" +
-        "                         time: run a Time Service\n" +
-        "                         provision: set up the chaincode if not present\n" +
-        "                         explorer: run a Fabric Block Explorer API.")
+      .text(
+        "Role to start the application as. Supported values (may be multiple values separated by a comma):\n" +
+          "                         ledger: run a Ledger API service\n" +
+          "                         time: run a Time Service\n" +
+          "                         provision: set up the chaincode if not present\n" +
+          "                         explorer: run a Fabric Block Explorer API."
+      )
       .required()
       .action((r, c) => {
         val splitStr = r.toLowerCase.split("\\s*,\\s*")
