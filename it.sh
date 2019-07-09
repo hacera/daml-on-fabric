@@ -20,8 +20,16 @@ cd target && java -jar ledger-api-test-tool.jar --extract || true # mask incorre
 # back to prior working directory
 cd ../
 
+echo "Launching fabric network"
+cd src/test/fixture/
+./restart_fabric.sh
+cd ../../../
+
+echo "Giving time for fabric network to initialise"
+sleep 90
+
 echo "Launching damlonx-example server..."
-java -jar target/scala-2.12/damlonx-example.jar --port=6865 target/SemanticTests.dar & serverPid=$!
+java -jar target/scala-2.12/daml-on-fabric.jar --port=6865 --role provision,time,ledger,explorer target/SemanticTests.dar & serverPid=$!
 echo "Waiting for the server to start"
 #crude sleep that will work cross platform
 sleep 20
