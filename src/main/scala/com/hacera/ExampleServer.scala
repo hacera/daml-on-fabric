@@ -39,7 +39,7 @@ object ExampleServer extends App {
   // If we only want to provision, exit right after
   if (!config.roleLedger && !config.roleTime && !config.roleExplorer) {
     logger.info("Hyperledger Fabric provisioning complete.")
-    System.exit(0);
+    System.exit(0)
   }
 
   // Initialize Akka and log exceptions in flows.
@@ -101,7 +101,7 @@ object ExampleServer extends App {
         config.portFile.foreach { f =>
           val w = new FileWriter(f)
           w.write(s"${server.port}\n")
-          w.close
+          w.close()
         }
 
         // Add a hook to close the server. Invoked when Ctrl-C is pressed.
