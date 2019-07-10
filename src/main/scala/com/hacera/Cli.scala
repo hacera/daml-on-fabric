@@ -15,21 +15,21 @@ object Cli {
       tlsConfig = config.tlsConfig.fold(
         Some(TlsConfiguration(enabled = true, None, Some(new File(path)), None))
       )(c => Some(c.copy(keyFile = Some(new File(path)))))
-  )
+    )
 
   private val crtConfig = (path: String, config: Config) =>
     config.copy(
       tlsConfig = config.tlsConfig.fold(
         Some(TlsConfiguration(enabled = true, Some(new File(path)), None, None))
       )(c => Some(c.copy(keyCertChainFile = Some(new File(path)))))
-  )
+    )
 
   private val cacrtConfig = (path: String, config: Config) =>
     config.copy(
       tlsConfig = config.tlsConfig.fold(
         Some(TlsConfiguration(enabled = true, None, None, Some(new File(path))))
       )(c => Some(c.copy(trustCertCollectionFile = Some(new File(path)))))
-  )
+    )
 
   private val cmdArgParser = new scopt.OptionParser[Config]("daml-on-fabric") {
     head(
@@ -65,7 +65,8 @@ object Cli {
           "                         ledger: run a Ledger API service\n" +
           "                         time: run a Time Service\n" +
           "                         provision: set up the chaincode if not present\n" +
-          "                         explorer: run a Fabric Block Explorer API.")
+          "                         explorer: run a Fabric Block Explorer API."
+      )
       .required()
       .action((r, c) => {
         val splitStr = r.toLowerCase.split("\\s*,\\s*")
