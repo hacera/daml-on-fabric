@@ -60,8 +60,8 @@ object FabricParticipantState {
   */
 class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participantId: ParticipantId)(
     implicit system: ActorSystem,
-    mat: Materializer)
-    extends ReadService
+    mat: Materializer
+) extends ReadService
     with WriteService
     with AutoCloseable {
   import FabricParticipantState._
@@ -73,7 +73,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   // The ledger configuration
   private val ledgerConfig = Configuration(
-    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get)
+    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get
+  )
 
   // DAML Engine for transaction validation.
   private val engine = Engine()
@@ -474,7 +475,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   private def getDamlState(state: State, key: DamlStateKey): Option[DamlStateValue] = {
 
     val entryBytes = fabricConn.getValue(
-      NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray)
+      NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray
+    )
     if (entryBytes == null || entryBytes.isEmpty)
       return Option[DamlStateValue](null)
     Option[DamlStateValue](DamlStateValue.parseFrom(entryBytes))
@@ -500,8 +502,10 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     Timestamp.assertFromInstant(Clock.systemUTC().instant())
 
   /** Allocate a party on the ledger */
-  override def allocateParty(hint: Option[String],
-                             displayName: Option[String]): CompletionStage[PartyAllocationResult] =
+  override def allocateParty(
+      hint: Option[String],
+      displayName: Option[String]
+  ): CompletionStage[PartyAllocationResult] =
     // TODO: Implement party management (does not work yet just like in reference)
     CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
 
