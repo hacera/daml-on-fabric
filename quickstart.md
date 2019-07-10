@@ -1,4 +1,4 @@
-[//]: # ( Copyright The Unbounded Network LTD)
+[//]: # (Copyright The Unbounded Network LTD)
 
 # Quick Start Guide for DAML-on-Fabric
 

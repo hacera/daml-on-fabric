@@ -115,8 +115,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     val baos = new ByteArrayOutputStream
     val oos = new ObjectOutputStream(baos)
     oos.writeObject(commit)
-    oos.close
-    return baos.toByteArray
+    oos.close()
+    baos.toByteArray
 
   }
 
@@ -125,8 +125,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     val bais = new ByteArrayInputStream(bytes)
     val ois = new ObjectInputStream(bais)
     val commit = ois.readObject.asInstanceOf[Commit]
-    ois.close
-    return commit
+    ois.close()
+    commit
 
   }
 
@@ -142,14 +142,14 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
         logger.trace(s"CommitActor: committing heartbeat, recordTime=$newRecordTime")
 
         // Write recordTime to Fabric
-        fabricConn.putRecordTime(newRecordTime.toString);
+        fabricConn.putRecordTime(newRecordTime.toString)
 
         // Write commit log to Fabric
         val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
         // if ledger is running, it will read heartbeat back from the chain...
         if (!roleLedger) {
-          logger.info(s"Committing new Heartbeat at ${newRecordTime}")
+          logger.info(s"Committing new Heartbeat at $newRecordTime")
         }
 
       case commit @ CommitSubmission(entryId, submission) =>
@@ -158,7 +158,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
         // check if entry already exists
         val existingEntry = fabricConn.getValue(entryId.getEntryId.toByteArray)
-        if (existingEntry != null && existingEntry.length > 0) {
+        if (existingEntry != null && existingEntry.nonEmpty) {
           // The entry identifier already in use, drop the message and let the
           // client retry submission.
           logger.warn(s"CommitActor: duplicate entry identifier in commit message, ignoring.")
@@ -252,7 +252,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
         }
 
         try {
-          Thread.sleep(50);
+          Thread.sleep(50)
         } catch {
           case e: InterruptedException => running = false
         }
@@ -279,7 +279,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   if (beginning == 0) {
     // now as bad as this is we really need to wait until first record time appears.
     // otherwise, ledger cannot function
-    while (fabricConn.getRecordTime() == "") {
+    while (fabricConn.getRecordTime == "") {
       Thread.sleep(500)
     }
   }
@@ -311,14 +311,13 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     try {
       commitBytes = fabricConn.getCommit(idx)
     } catch {
-      case t: Throwable => {
+      case t: Throwable =>
         t.printStackTrace(System.err)
         commitBytes = null
-      }
     }
 
     if (commitBytes == null) {
-      sys.error(s"getUpdate: commit index ${idx} was not found on the ledger")
+      sys.error(s"getUpdate: commit index $idx was not found on the ledger")
     }
 
     val commit = unserializeCommit(commitBytes)
@@ -335,14 +334,13 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     try {
       commitBytes = fabricConn.getCommit(idx)
     } catch {
-      case t: Throwable => {
+      case t: Throwable =>
         t.printStackTrace(System.err)
         commitBytes = null
-      }
     }
 
     if (commitBytes == null) {
-      sys.error(s"getUpdate: commit index ${idx} was not found on the ledger")
+      sys.error(s"getUpdate: commit index $idx was not found on the ledger")
     }
 
     val commit = unserializeCommit(commitBytes)
@@ -456,7 +454,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     * this method is called only once, or very rarely.
     */
   // FIXME(JM): Add configuration to initial conditions!
-  override def getLedgerInitialConditions(): Source[LedgerInitialConditions, NotUsed] =
+  override def getLedgerInitialConditions: Source[LedgerInitialConditions, NotUsed] =
     Source.single(initialConditions)
 
   /** Shutdown by killing the [[CommitActor]]. */
@@ -469,7 +467,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     val entryBytes = fabricConn.getValue(entryId.getEntryId.toByteArray)
     if (entryBytes.isEmpty)
       return null
-    return DamlLogEntry.parseFrom(entryBytes)
+    DamlLogEntry.parseFrom(entryBytes)
 
   }
 
@@ -479,11 +477,10 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray)
     if (entryBytes == null || entryBytes.isEmpty)
       return Option[DamlStateValue](null)
-    return Option[DamlStateValue](DamlStateValue.parseFrom(entryBytes))
-
+    Option[DamlStateValue](DamlStateValue.parseFrom(entryBytes))
   }
 
-  private def allocateEntryId(): DamlLogEntryId = {
+  private def allocateEntryId: DamlLogEntryId = {
     val nonce: Array[Byte] = Array.ofDim(8)
     rng.nextBytes(nonce)
     DamlLogEntryId.newBuilder
@@ -499,7 +496,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   /** Get a new record time for the ledger from the system clock.
     * Public for use from integration tests.
     */
-  def getNewRecordTime(): Timestamp =
+  def getNewRecordTime: Timestamp =
     Timestamp.assertFromInstant(Clock.systemUTC().instant())
 
   /** Allocate a party on the ledger */
