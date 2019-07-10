@@ -15,10 +15,11 @@ final case class Config(
     roleLedger: Boolean,
     roleTime: Boolean,
     roleProvision: Boolean,
-    roleExplorer: Boolean
+    roleExplorer: Boolean,
+    participantId: String
 )
 
 object Config {
   def default: Config =
-    new Config(0, None, List.empty, None, false, false, false, false)
+    new Config(0, None, List.empty, None, false, false, false, false, "fabric-single-participant")
 }

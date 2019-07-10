@@ -19,10 +19,9 @@ import com.digitalasset.daml.lf.data.Time.Timestamp
 import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.daml_lf.DamlLf.Archive
 import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
-import com.digitalasset.platform.akkastreams.dispatcher.SubSource.{OneAfterAnother}
-import com.daml.ledger.participant.state.kvutils.{KeyValueSubmission}
+import com.digitalasset.platform.akkastreams.dispatcher.SubSource.OneAfterAnother
+import com.daml.ledger.participant.state.kvutils.KeyValueSubmission
 import com.daml.ledger.participant.state.backport.TimeModel
-
 import com.daml.ledger.participant.state.kvutils.KeyValueCommitting
 import com.daml.ledger.participant.state.kvutils.KeyValueConsumption
 import com.google.protobuf.ByteString
@@ -34,6 +33,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import java.util.concurrent.{CompletableFuture, CompletionStage}
 import java.time.{Duration => JDuration}
+import java.util.concurrent.atomic.AtomicInteger
 
 object FabricParticipantState {
 
@@ -58,10 +58,10 @@ object FabricParticipantState {
 /** Implementation of the participant-state [[ReadService]] and [[WriteService]] using
   * the key-value utilities and a Fabric store.
   */
-class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
+class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participantId: ParticipantId)(
     implicit system: ActorSystem,
-    mat: Materializer
-) extends ReadService
+    mat: Materializer)
+    extends ReadService
     with WriteService
     with AutoCloseable {
   import FabricParticipantState._
@@ -73,8 +73,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
 
   // The ledger configuration
   private val ledgerConfig = Configuration(
-    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get
-  )
+    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get)
 
   // DAML Engine for transaction validation.
   private val engine = Engine()
@@ -87,6 +86,9 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
 
   // Namespace prefix for DAML state.
   private val NS_DAML_STATE = ByteString.copyFromUtf8("DS")
+
+  // For an in-memory ledger, an atomic integer is enough to guarantee uniqueness
+  private val submissionId = new AtomicInteger()
 
   /** Interval for heartbeats. Heartbeats are committed to State.commitLog
     * and sent as [[Update.Heartbeat]] to [[stateUpdates]] consumers.
@@ -293,7 +295,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
     * given offset, and the method [[Dispatcher.signalNewHead]] to signal that
     * new elements has been added.
     */
-  private val dispatcher: Dispatcher[Int, Update] = Dispatcher(
+  private val dispatcher: Dispatcher[Int, List[Update]] = Dispatcher(
     steppingMode = OneAfterAnother(
       (idx: Int, _) => idx + 1,
       (idx: Int) => Future.successful(getUpdate(idx, stateRef))
@@ -302,10 +304,31 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
     headAtInitialization = beginning
   )
 
+  // this function retrieves Commit by index
+  private def getCommit(idx: Int, state: State): Commit = {
+    // read commit from log (stored on Fabric)
+    var commitBytes: Array[Byte] = null
+    try {
+      commitBytes = fabricConn.getCommit(idx)
+    } catch {
+      case t: Throwable => {
+        t.printStackTrace(System.err)
+        commitBytes = null
+      }
+    }
+
+    if (commitBytes == null) {
+      sys.error(s"getUpdate: commit index ${idx} was not found on the ledger")
+    }
+
+    val commit = unserializeCommit(commitBytes)
+    commit
+  }
+
   /** Helper for [[dispatcher]] to fetch [[DamlLogEntry]] from the
     * state and convert it into [[Update]].
     */
-  private def getUpdate(idx: Int, state: State): Update = {
+  private def getUpdate(idx: Int, state: State): List[Update] = {
 
     // read commit from log (stored on Fabric)
     var commitBytes: Array[Byte] = null
@@ -335,7 +358,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
 
       case CommitHeartbeat(recordTime) =>
         // read update from commit: heartbeat
-        Update.Heartbeat(recordTime)
+        List(Update.Heartbeat(recordTime))
     }
   }
 
@@ -346,18 +369,26 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
     * See [[ReadService.stateUpdates]] for full documentation for the properties
     * of this method.
     */
-  override def stateUpdates(beginAfter: Option[Offset]): Source[(Offset, Update), NotUsed] = {
+  override def stateUpdates(beginAfter: Option[Offset]): Source[(Offset, Update), NotUsed] =
     dispatcher
       .startingAt(
         beginAfter
-          .map(_.components.head.toInt + 1) // startingAt is inclusive, so jump over one element.
+          .map(_.components.head.toInt)
           .getOrElse(beginning)
       )
-      .map {
-        case (idx, update) =>
-          Offset(Array(idx.toLong)) -> update
+      .collect {
+        case (offset, updates) =>
+          updates.zipWithIndex.map {
+            case (el, idx) => Offset(Array(offset.toLong, idx.toLong)) -> el
+          }
       }
-  }
+      .mapConcat(identity)
+      .filter {
+        case (offset, _) =>
+          if (beginAfter.isDefined)
+            offset > beginAfter.get
+          else true
+      }
 
   /** Submit a transaction to the ledger.
     *
@@ -402,17 +433,19 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
       SubmissionResult.Acknowledged
     })
 
-  /** Back-channel for uploading DAML-LF archives.
-    * Currently participant-state interfaces do not specify an admin
-    * interface to upload packages.
-    * See issue https://github.com/digital-asset/daml/issues/347.
-    */
-  def uploadArchive(archive: Archive): Unit = {
+  /** Upload DAML-LF packages to the ledger */
+  override def uploadPackages(
+      archives: List[Archive],
+      sourceDescription: Option[String]
+  ): CompletionStage[UploadPackagesResult] = {
+    val sId = submissionId.getAndIncrement().toString
+    val cf = new CompletableFuture[UploadPackagesResult]
     commitActorRef ! CommitSubmission(
       allocateEntryId,
       KeyValueSubmission
-        .archivesToSubmission(List(archive), "example source description", "example participant id")
+        .archivesToSubmission(sId, archives, sourceDescription.getOrElse(""), participantId)
     )
+    cf
   }
 
   /** Retrieve the static initial conditions of the ledger, containing
@@ -443,8 +476,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
   private def getDamlState(state: State, key: DamlStateKey): Option[DamlStateValue] = {
 
     val entryBytes = fabricConn.getValue(
-      NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray
-    )
+      NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray)
     if (entryBytes == null || entryBytes.isEmpty)
       return Option[DamlStateValue](null)
     return Option[DamlStateValue](DamlStateValue.parseFrom(entryBytes))
@@ -471,19 +503,9 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean)(
     Timestamp.assertFromInstant(Clock.systemUTC().instant())
 
   /** Allocate a party on the ledger */
-  override def allocateParty(
-      hint: Option[String],
-      displayName: Option[String]
-  ): CompletionStage[PartyAllocationResult] =
+  override def allocateParty(hint: Option[String],
+                             displayName: Option[String]): CompletionStage[PartyAllocationResult] =
     // TODO: Implement party management (does not work yet just like in reference)
     CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
-
-  /** Upload a collection of DAML-LF packages to the ledger. */
-  override def uploadPublicPackages(
-      archives: List[Archive],
-      sourceDescription: String
-  ): CompletionStage[SubmissionResult] =
-    // TODO: Implement this, and remove [[uploadArchive]].
-    CompletableFuture.completedFuture(SubmissionResult.NotSupported)
 
 }
