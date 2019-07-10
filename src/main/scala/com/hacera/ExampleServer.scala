@@ -12,7 +12,9 @@ import akka.stream.scaladsl.Sink
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Supervision}
 import com.daml.ledger.api.server.damlonx.Server
 import com.daml.ledger.participant.state.index.v1.impl.reference.ReferenceIndexService
+import com.daml.ledger.participant.state.v1.ParticipantId
 import com.digitalasset.daml.lf.archive.DarReader
+import com.digitalasset.daml.lf.data.Ref
 import com.digitalasset.daml_lf.DamlLf
 import com.digitalasset.daml_lf.DamlLf.Archive
 import com.digitalasset.platform.common.util.DirectExecutionContext
@@ -37,7 +39,7 @@ object ExampleServer extends App {
   // If we only want to provision, exit right after
   if (!config.roleLedger && !config.roleTime && !config.roleExplorer) {
     logger.info("Hyperledger Fabric provisioning complete.")
-    System.exit(0);
+    System.exit(0)
   }
 
   // Initialize Akka and log exceptions in flows.
@@ -50,11 +52,12 @@ object ExampleServer extends App {
       }
   )
 
-  val ledger = new FabricParticipantState(config.roleTime, config.roleLedger)
+  val participantId: ParticipantId = Ref.LedgerString.assertFromString(config.participantId)
+  val ledger = new FabricParticipantState(config.roleTime, config.roleLedger, participantId)
 
   if (config.roleLedger) {
     def archivesFromDar(file: File): List[Archive] = {
-      DarReader[Archive](x => Try(Archive.parseFrom(x)))
+      DarReader[Archive]((_, x) => Try(Archive.parseFrom(x)))
         .readArchive(new ZipFile(file))
         .fold(t => throw new RuntimeException(s"Failed to parse DAR from $file", t), dar => dar.all)
     }
@@ -65,18 +68,13 @@ object ExampleServer extends App {
     currentPackages.foreach { pkgid =>
       val archive = DamlLf.Archive.parseFrom(fabricConn.getPackage(pkgid))
       logger.info(s"Found existing archive ${archive.getHash}.")
-      ledger.uploadArchive(archive)
+      ledger.uploadPackages(List(archive), Some("uploaded by server"))
     }
 
     // Parse DAR archives given as command-line arguments and upload them
     // to the ledger using a side-channel.
     config.archiveFiles.foreach { f =>
-      archivesFromDar(f).foreach { archive =>
-        if (!currentPackages.contains(archive.getHash)) {
-          logger.info(s"Uploading archive ${archive.getHash}...")
-          ledger.uploadArchive(archive)
-        }
-      }
+      ledger.uploadPackages(archivesFromDar(f), Some("uploaded by server"))
     }
   }
 
@@ -88,7 +86,8 @@ object ExampleServer extends App {
       .foreach { initialConditions =>
         val indexService = ReferenceIndexService(
           participantReadService = ledger,
-          initialConditions = initialConditions
+          initialConditions = initialConditions,
+          participantId = participantId
         )
 
         val server = Server(
@@ -102,7 +101,7 @@ object ExampleServer extends App {
         config.portFile.foreach { f =>
           val w = new FileWriter(f)
           w.write(s"${server.port}\n")
-          w.close
+          w.close()
         }
 
         // Add a hook to close the server. Invoked when Ctrl-C is pressed.
