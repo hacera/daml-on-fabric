@@ -25,6 +25,7 @@ const (
 	_packagesStart   = _prefixPackages + "0000000000000000000000000000000000000000000000000000000000000000"
 	_packagesEnd     = _prefixPackages + "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	_recordTime      = "DRecordTime"
+	_ledgerID        = "DLedgerID"
 )
 
 // DamlOnFabric implements storage of DAML data on Fabric
@@ -83,6 +84,14 @@ func (t *DamlOnFabric) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 	} else if function == "RecordTimeRead" {
 
 		return t.recordTimeRead(stub, args, rawArgs)
+
+	} else if function == "LedgerIDWrite" {
+
+		return t.ledgerIDWrite(stub, args, rawArgs)
+
+	} else if function == "LedgerIDRead" {
+
+		return t.ledgerIDRead(stub, args, rawArgs)
 
 	}
 
@@ -337,6 +346,38 @@ func (t *DamlOnFabric) recordTimeRead(stub shim.ChaincodeStubInterface, args []s
 	}
 
 	rt, err := stub.GetState(_recordTime)
+	if err != nil {
+		return shim.Error(fmt.Sprintf("Error reading Fabric state: %s", err.Error()))
+	}
+
+	return shim.Success(rt)
+
+}
+
+// ledgerIDWrite:
+func (t *DamlOnFabric) ledgerIDWrite(stub shim.ChaincodeStubInterface, args []string, rawArgs [][]byte) pb.Response {
+
+	if len(rawArgs) != 1 {
+		return shim.Error(fmt.Sprintf("Expected 1 argument (LedgerID), got %d", len(args)))
+	}
+
+	err := stub.PutState(_ledgerID, rawArgs[0])
+	if err != nil {
+		return shim.Error(fmt.Sprintf("Error writing Fabric state: %s", err.Error()))
+	}
+
+	return shim.Success(rawArgs[0])
+
+}
+
+// ledgerIDRead:
+func (t *DamlOnFabric) ledgerIDRead(stub shim.ChaincodeStubInterface, args []string, rawArgs [][]byte) pb.Response {
+
+	if len(rawArgs) != 0 {
+		return shim.Error(fmt.Sprintf("Expected no arguments, got %d", len(rawArgs)))
+	}
+
+	rt, err := stub.GetState(_ledgerID)
 	if err != nil {
 		return shim.Error(fmt.Sprintf("Error reading Fabric state: %s", err.Error()))
 	}

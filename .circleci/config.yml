@@ -1,0 +1,66 @@
+version: 2
+jobs:
+  build:
+    working_directory: ~/samplescala
+    docker:
+      - image: openjdk:8
+    environment:
+      SBT_VERSION: 1.0.4
+    steps:
+      - run: echo 'export ARTIFACT_BUILD=$CIRCLE_PROJECT_REPONAME-$CIRCLE_BUILD_NUM.zip' >> $BASH_ENV
+      - run:
+          name: Get sbt binary
+          command: |
+                    apt update && apt install -y curl
+                    curl -L -o sbt-$SBT_VERSION.deb https://dl.bintray.com/sbt/debian/sbt-$SBT_VERSION.deb
+                    dpkg -i sbt-$SBT_VERSION.deb
+                    rm sbt-$SBT_VERSION.deb
+                    apt-get update
+                    apt-get install -y sbt python-pip git
+                    apt-get install -y docker-compose
+                    pip install awscli
+                    pip install urllib3==1.22
+                    apt-get clean && apt-get autoclean
+                    
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Install Docker client
+          command: |
+            set -x
+            VER="18.09.6"
+            curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
+            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
+            mv /tmp/docker/* /usr/bin
+      - restore_cache:
+          # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
+          key: sbt-cache
+      - run:
+          name: Check formatting
+          command: make format-check
+      - run:
+          name: Compile
+          command: make compile
+      - run:
+          name: Unit tests
+          command: make test
+      - run:
+          name: Package
+          command: make package
+      - run:
+          name: Integration test
+          command: make it
+      #- store_artifacts: # for display in Artifacts: https://circleci.com/docs/2.0/artifacts/ 
+      #    path: target/universal/samplescala.zip
+      #    destination: samplescala
+      - save_cache:
+          key: sbt-cache
+          paths:
+            - "~/.ivy2/cache"
+            - "~/.sbt"
+            - "~/.m2"
+      #- deploy:
+      #    command: |
+      #        mv target/universal/samplescala.zip $CIRCLE_ARTIFACTS/$ARTIFACT_BUILD
+      #        aws s3 cp $CIRCLE_ARTIFACTS/$ARTIFACT_BUILD s3://samplescala.blogs/builds/ --metadata {\"git_sha1\":\"$CIRCLE_SHA1\"}
+

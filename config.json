@@ -3,27 +3,27 @@
   "peers": [{
     "organization": "org1.example.com",
     "name": "peer0",
-    "url": "grpc://peer0.org1.example.com:7051",
+    "url": "grpc://localhost:10051",
     "adminMsp": "./src/test/fixture/data/crypto-config/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp",
     "mspId": "Org1MSP"
   }, {
     "organization": "org2.example.com",
     "name": "peer0",
-    "url": "grpc://peer0.org2.example.com:7056",
+    "url": "grpc://localhost:10056",
     "adminMsp": "./src/test/fixture/data/crypto-config/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp",
     "mspId": "Org2MSP"
   }],
   "orderer": {
     "organization": "example.com",
     "name": "orderer",
-    "url": "grpc://orderer.example.com:7050",
+    "url": "grpc://localhost:10050",
     "adminMsp": "./src/test/fixture/data/crypto-config/ordererOrganizations/example.com/users/Admin@example.com/msp",
     "mspId": "OrdererMSP"
   },
   "channelId": "mainchannel",
   "ca": {
     "name": "ca0",
-    "url": "http://ca0:7054"
+    "url": "http://localhost:10054"
   },
   "chaincode": {
     "gopath": "./src/test/fixture/chaincode",
@@ -32,6 +32,7 @@
   },
   "endorsementPolicy": "./src/test/fixture/data/endorsement-policy.yaml",
   "rest": {
-    "port": 4000
-  }
+    "port": 8080
+  },
+  "ledgerId": "fabric-ledger"
 }

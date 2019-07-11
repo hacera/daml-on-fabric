@@ -20,5 +20,4 @@ package: compile
 	sbt assembly
 
 it: package
-	echo "skipping IT until script is working again"
-	#bash ./it.sh
+	bash ./it.sh

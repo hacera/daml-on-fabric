@@ -15,16 +15,10 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 public class DAMLKVConnector {
-    
+
+    public String DEFAULT_LEDGER_ID = "fabric-ledger-server";
+
     private FabricContext ctx;
-    
-    private class DAMLKVCache {
-        long lastUsed;
-        byte[] data;
-        // written: this is set to False for entries that are not yet on the blockchain.
-        //          this is so that with very high load (more than 100 entries per second), no data is dropped
-        boolean written;
-    }
     
     private static DAMLKVConnector instance;
     public static synchronized DAMLKVConnector get(boolean doEnsure, boolean doExplorer) {
@@ -88,11 +82,62 @@ public class DAMLKVConnector {
                 throw new RuntimeException(t);
             }
         }
+
+        if (doEnsure) {
+            String id = getLedgerId();
+            if (id.isEmpty()) {
+                putLedgerId(getLocalLedgerId());
+            }
+        }
+    }
+
+    @FunctionalInterface
+    private interface RetryFunction {
+
+        byte[] call();
+
+    }
+
+    // if we have a chaincode invoke exception with invalid transaction - status 10 or 11, this means
+    //   that there was a state read/write conflict at the Orderer. we need to retry the transaction
+    private boolean checkException(String msg) {
+        return (msg != null && (msg.contains("status 11") || msg.contains("status 10")));
+    }
+
+    private byte[] retryInvoke(RetryFunction f) {
+        // logically, ce cannot be uninitialized here, but Java does not recognize this
+        RuntimeException ce = null;
+
+        for (int i = 0; i < 5; i++) {
+            try {
+                return f.call();
+            } catch (RuntimeException e) {
+
+                String msg = e.getMessage();
+                // Status 11 means there was some kind of concurrency conflict at the orderer
+                if (checkException(msg)) {
+                    ce = e;
+                    try {
+                        Thread.sleep(250);
+                        System.out.format("INTERNAL: retrying Fabric transaction...%n");
+                    } catch (InterruptedException ie) {
+                        throw new RuntimeException(ie);
+                    }
+                    continue;
+                }
+
+                e.printStackTrace(System.err);
+                throw e;
+
+            }
+        }
+
+        throw ce;
     }
     
     public void putValue(byte[] key, byte[] value) {
         long init = System.currentTimeMillis();
-        ctx.invokeChaincode("RawWrite", key, gzipBytes(value));
+        retryInvoke(() -> ctx.invokeChaincode("RawWrite", key, gzipBytes(value)));
         logTime("putValue", init);
     }
 
@@ -109,7 +154,7 @@ public class DAMLKVConnector {
     public int putCommit(byte[] commit) {
         long init = System.currentTimeMillis();
         logTime("putCommit", init);
-        byte[] newIndexBytes = ctx.invokeChaincode("WriteCommitLog", new byte[][]{ gzipBytes(commit) });
+        byte[] newIndexBytes = retryInvoke(() -> ctx.invokeChaincode("WriteCommitLog", new byte[][]{ gzipBytes(commit) }));
         int newIndex = ByteBuffer.wrap(newIndexBytes).order(ByteOrder.LITTLE_ENDIAN).getInt();
         return newIndex;
     }
@@ -182,7 +227,7 @@ public class DAMLKVConnector {
     
     private void putPackage(String cacheKey, byte[] value, boolean cacheOnly) {
         long init = System.currentTimeMillis();
-        ctx.invokeChaincode("PackageWrite", cacheKey.getBytes(StandardCharsets.UTF_8), gzipBytes(value));
+        retryInvoke(() -> ctx.invokeChaincode("PackageWrite", cacheKey.getBytes(StandardCharsets.UTF_8), gzipBytes(value)));
         logTime("putPackage", init);
     }
 
@@ -231,7 +276,7 @@ public class DAMLKVConnector {
 
     void putRecordTime(String time) {
         long init = System.currentTimeMillis();
-        ctx.invokeChaincode("RecordTimeWrite", time);
+        retryInvoke(() -> ctx.invokeChaincode("RecordTimeWrite", time));
         logTime("putRecordTime", init);
     }
 
@@ -239,6 +284,27 @@ public class DAMLKVConnector {
         long init = System.currentTimeMillis();
         byte[] bytes = ctx.queryChaincode("RecordTimeRead");
         logTime("getRecordTime", init);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    public String getLocalLedgerId() {
+        if (ctx == null) return "";
+        FabricContextConfig ctxConfig = ctx.getConfig();
+        if (ctxConfig == null) return "";
+        if (ctxConfig.ledgerId == null) return DEFAULT_LEDGER_ID;
+        return ctxConfig.ledgerId;
+    }
+
+    void putLedgerId(String ledgerId) {
+        long init = System.currentTimeMillis();
+        retryInvoke(() -> ctx.invokeChaincode("LedgerIDWrite", ledgerId));
+        logTime("putLedgerId", init);
+    }
+
+    public String getLedgerId() {
+        long init = System.currentTimeMillis();
+        byte[] bytes = ctx.queryChaincode("LedgerIDRead");
+        logTime("getLedgerId", init);
         return new String(bytes, StandardCharsets.UTF_8);
     }
     
