@@ -69,7 +69,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   implicit private val ec: ExecutionContext = mat.executionContext
 
-  val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
+  val ledgerId = "ledger-server"
+//  val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
 
   // The ledger configuration
   private val ledgerConfig = Configuration(
