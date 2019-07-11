@@ -33,5 +33,6 @@
   "endorsementPolicy": "./src/test/fixture/data/endorsement-policy.yaml",
   "rest": {
     "port": 4000
-  }
+  },
+  "ledgerId": "fabric-ledger"
 }

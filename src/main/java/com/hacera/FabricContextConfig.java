@@ -46,5 +46,6 @@ public class FabricContextConfig {
     public String ordererAdminMsp;
     public String endorsementPolicy;
     public RestConfig rest;
+    public String ledgerId;
     
 }

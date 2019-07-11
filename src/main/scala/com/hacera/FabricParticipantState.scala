@@ -69,9 +69,6 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   implicit private val ec: ExecutionContext = mat.executionContext
 
-  val ledgerId = "ledger-server"
-//  val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
-
   // The ledger configuration
   private val ledgerConfig = Configuration(
     TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get
@@ -99,6 +96,9 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   // Fabric connection
   private val fabricConn = com.hacera.DAMLKVConnector.get
+
+  val ledgerId = fabricConn.getLedgerId
+  //  val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
 
   /** Reference to the latest state.
     */
