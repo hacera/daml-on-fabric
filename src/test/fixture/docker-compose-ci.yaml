@@ -1,13 +1,17 @@
 #
 # Copyright IBM Corp. All Rights Reserved.
+# (c) 2019 HACERA, Inc
 #
 # SPDX-License-Identifier: Apache-2.0
 #
+
+# NOTE: this file is not intended to be executed manually.
+#       it should be used with it.sh + fabric.sh only...
+
 version: '2'
 
 services:
   orderer.example.com:
-    container_name: damlonfabric_orderer.example.com
     image: hyperledger/fabric-orderer${IMAGE_TAG_FABRIC}
     hostname: orderer.example.com
     environment:
@@ -28,15 +32,19 @@ services:
       - GRPC_VERBOSITY=debug
       - ORDERER_GENERAL_AUTHENTICATION_TIMEWINDOW=3600s #Not for production -- remove.
     working_dir: /opt/gopath/src/github.com/hyperledger/fabric
-    command: orderer
-    volumes:
-     - ./data/:/etc/hyperledger/configtx:ro
-     - ./data/crypto-config/ordererOrganizations/example.com/orderers/orderer.example.com/:/etc/hyperledger/msp/orderer:ro
-     - ./data/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/:/etc/hyperledger/msp/peerOrg1:ro
-     - ./data/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/:/etc/hyperledger/msp/peerOrg2:ro
+    command: >
+      bash -c "
+      mkdir -p /etc/hyperledger/configtx &&
+      mkdir -p /etc/hyperledger/msp/orderer &&
+      mkdir -p /etc/hyperledger/msp/peerOrg1 &&
+      mkdir -p /etc/hyperledger/msp/peerOrg2 &&
+      echo \"${CONFIGTX}\" | base64 -d -i | tar -C /etc/hyperledger/configtx -xzvvf - &&
+      cp -r /etc/hyperledger/configtx/crypto-config/ordererOrganizations/example.com/orderers/orderer.example.com/* /etc/hyperledger/msp/orderer &&
+      cp -r /etc/hyperledger/configtx/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/* /etc/hyperledger/msp/peerOrg1 &&
+      cp -r /etc/hyperledger/configtx/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/* /etc/hyperledger/msp/peerOrg2 &&
+      orderer"
 
   peer0.org1.example.com:
-    container_name: damlonfabric_peer0.org1.example.com
     hostname: peer0.org1.example.com
     extends:
       file: peer-base/peer-base-ci.yaml
@@ -53,14 +61,19 @@ services:
 
 #      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/msp/peer/msp/cacerts/ca.org1.example.com-cert.pem
       - CORE_PEER_TLS_CLIENTROOTCAS_FILES=/etc/hyperledger/msp/peer/msp/tlscacerts/tlsca.org1.example.com-cert.pem
+    command: >
+      bash -c "
+      mkdir -p /etc/hyperledger/configtx &&
+      mkdir -p /etc/hyperledger/msp/peer &&
+      echo \"${CONFIGTX}\" | base64 -d -i | tar -C /etc/hyperledger/configtx -xzvvf - &&
+      cp -r /etc/hyperledger/configtx/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/* /etc/hyperledger/msp/peer &&
+      peer node start"
     volumes:
       - /var/run/:/host/var/run/
-      - ./data/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/:/etc/hyperledger/msp/peer:ro
     depends_on:
       - orderer.example.com
 
   peer0.org2.example.com:
-    container_name: damlonfabric_peer0.org2.example.com
     hostname: peer0.org2.example.com
     extends:
       file: peer-base/peer-base-ci.yaml
@@ -76,14 +89,19 @@ services:
       - CORE_PEER_LOCALMSPID=Org2MSP
 #      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/msp/peer/msp/cacerts/ca.org1.example.com-cert.pem
       - CORE_PEER_TLS_CLIENTROOTCAS_FILES=/etc/hyperledger/msp/peer/msp/tlscacerts/tlsca.org2.example.com-cert.pem
+    command: >
+      bash -c "
+      mkdir -p /etc/hyperledger/configtx &&
+      mkdir -p /etc/hyperledger/msp/peer &&
+      echo \"${CONFIGTX}\" | base64 -d -i | tar -C /etc/hyperledger/configtx -xzvvf - &&
+      cp -r /etc/hyperledger/configtx/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/* /etc/hyperledger/msp/peer &&
+      peer node start"
     volumes:
-         - /var/run/:/host/var/run/
-         - ./data/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/:/etc/hyperledger/msp/peer:ro
+      - /var/run/:/host/var/run/
     depends_on:
        - orderer.example.com
 
   peer0.org3.example.com:
-    container_name: damlonfabric_peer0.org3.example.com
     hostname: peer0.org3.example.com
     extends:
       file: peer-base/peer-base-ci.yaml
@@ -99,14 +117,19 @@ services:
       - CORE_PEER_LOCALMSPID=Org3MSP
 #      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/msp/peer/msp/cacerts/ca.org1.example.com-cert.pem
       - CORE_PEER_TLS_CLIENTROOTCAS_FILES=/etc/hyperledger/msp/peer/msp/tlscacerts/tlsca.org3.example.com-cert.pem
+    command: >
+      bash -c "
+      mkdir -p /etc/hyperledger/configtx &&
+      mkdir -p /etc/hyperledger/msp/peer &&
+      echo \"${CONFIGTX}\" | base64 -d -i | tar -C /etc/hyperledger/configtx -xzvvf - &&
+      cp -r /etc/hyperledger/configtx/crypto-config/peerOrganizations/org3.example.com/peers/peer0.org3.example.com/* /etc/hyperledger/msp/peer &&
+      peer node start"
     volumes:
-         - /var/run/:/host/var/run/
-         - ./data/crypto-config/peerOrganizations/org3.example.com/peers/peer0.org3.example.com/:/etc/hyperledger/msp/peer:ro
+      - /var/run/:/host/var/run/
     depends_on:
        - orderer.example.com
 
   peer0.org4.example.com:
-    container_name: damlonfabric_peer0.org4.example.com
     hostname: peer0.org4.example.com
     extends:
       file: peer-base/peer-base-ci.yaml
@@ -122,14 +145,17 @@ services:
       - CORE_PEER_LOCALMSPID=Org4MSP
 #      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/msp/peer/msp/cacerts/ca.org1.example.com-cert.pem
       - CORE_PEER_TLS_CLIENTROOTCAS_FILES=/etc/hyperledger/msp/peer/msp/tlscacerts/tlsca.org4.example.com-cert.pem
-    volumes:
-         - /var/run/:/host/var/run/
-         - ./data/crypto-config/peerOrganizations/org4.example.com/peers/peer0.org4.example.com/:/etc/hyperledger/msp/peer:ro
+    command: >
+      bash -c "
+      mkdir -p /etc/hyperledger/configtx &&
+      mkdir -p /etc/hyperledger/msp/peer &&
+      echo \"${CONFIGTX}\" | base64 -d -i | tar -C /etc/hyperledger/configtx -xzvvf - &&
+      cp -r /etc/hyperledger/configtx/crypto-config/peerOrganizations/org4.example.com/peers/peer0.org4.example.com/* /etc/hyperledger/msp/peer &&
+      peer node start"
     depends_on:
        - orderer.example.com
 
   peer0.org5.example.com:
-    container_name: damlonfabric_peer0.org5.example.com
     hostname: peer0.org5.example.com
     extends:
       file: peer-base/peer-base-ci.yaml
@@ -145,16 +171,21 @@ services:
       - CORE_PEER_LOCALMSPID=Org5MSP
 #      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/msp/peer/msp/cacerts/ca.org1.example.com-cert.pem
       - CORE_PEER_TLS_CLIENTROOTCAS_FILES=/etc/hyperledger/msp/peer/msp/tlscacerts/tlsca.org5.example.com-cert.pem
+    command: >
+      bash -c "
+      mkdir -p /etc/hyperledger/configtx &&
+      mkdir -p /etc/hyperledger/msp/peer &&
+      echo \"${CONFIGTX}\" | base64 -d -i | tar -C /etc/hyperledger/configtx -xzvvf - &&
+      cp -r /etc/hyperledger/configtx/crypto-config/peerOrganizations/org5.example.com/peers/peer0.org5.example.com/* /etc/hyperledger/msp/peer &&
+      peer node start"
     volumes:
-         - /var/run/:/host/var/run/
-         - ./data/crypto-config/peerOrganizations/org5.example.com/peers/peer0.org5.example.com/:/etc/hyperledger/msp/peer:ro
+      - /var/run/:/host/var/run/
     depends_on:
        - orderer.example.com
 
   configtxlator:
       image: hyperledger/fabric-tools${IMAGE_TAG_FABRIC}
       command: /usr/local/bin/configtxlator start
-      container_name: damlonfabric_configtxlator
 
   daml-on-fabric:
       image: hacera/daml-on-fabric:v1

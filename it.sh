@@ -24,6 +24,17 @@ echo "Building CI Docker image"
 cd src/test/fixture/
 ./build_ci.sh
 
+function compress_dir() {
+  tar  -C $1 -czvvf - . | base64
+}
+
+# This is specifically for CircleCI:
+# It does not allow us to attach volume from host machine, like usually configured for Fabric.
+# Thus we just send whole configuration directory this way.
+
+echo "Compressing MSP directory for Fabric..."
+export CONFIGTX="$(compress_dir ./data/)"
+
 echo "Launching Fabric network and DAML-on-Fabric server"
 export DOCKER_COMPOSE_FILE=docker-compose-ci.yaml
 export DOCKER_NETWORK=daml-on-fabric_ci
