@@ -51,11 +51,13 @@ $ sbt "run --role <roles> [--port NNNN] [DAMLArchive.dar DAMLArchive2.dar ...]"
 
 **Important: the ledger will connect to a Fabric network specified in *config.json* file.**
 
-Generally, if you run the ledger against a local network, you need to provide additional argument to SBT, like this: 
+Generally, if you run the ledger not against a local network, you need to provide additional argument to SBT, like this: 
 
 ```
-$ sbt "run ..." -J-DfabricConfigFile=./config.local.json
+$ sbt "run ..." -J-DfabricConfigFile=<configuration file>
 ```
+
+By default, it will use "config.json", which you can use for reference.
 
 #### Services, or "Roles"
 
@@ -96,7 +98,7 @@ Created dist/quickstart.dar.
 
 ```
 $ cd ~/daml-on-fabric/
-$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/dist/quickstart.dar" -J-DfabricConfigFile=./config.local.json
+$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/dist/quickstart.dar"
 ```
 
 ### Step 4. Run DAML Navigator

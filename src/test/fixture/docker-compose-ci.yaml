@@ -9,6 +9,7 @@ services:
   orderer.example.com:
     container_name: damlonfabric_orderer.example.com
     image: hyperledger/fabric-orderer${IMAGE_TAG_FABRIC}
+    hostname: orderer.example.com
     environment:
       - ORDERER_GENERAL_LOGLEVEL=debug
 #     - ORDERER_GENERAL_LOGLEVEL=error
@@ -34,12 +35,11 @@ services:
      - ./data/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/:/etc/hyperledger/msp/peerOrg1:ro
      - ./data/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/:/etc/hyperledger/msp/peerOrg2:ro
 
-    ports:
-      - 10050:7050
   peer0.org1.example.com:
     container_name: damlonfabric_peer0.org1.example.com
+    hostname: peer0.org1.example.com
     extends:
-      file: peer-base/peer-base-ex-bond-trading.yaml
+      file: peer-base/peer-base-ci.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org1.example.com
@@ -56,16 +56,14 @@ services:
     volumes:
       - /var/run/:/host/var/run/
       - ./data/crypto-config/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/:/etc/hyperledger/msp/peer:ro
-    ports:
-      - 10051:7051
-      - 10053:7053
     depends_on:
       - orderer.example.com
 
   peer0.org2.example.com:
     container_name: damlonfabric_peer0.org2.example.com
+    hostname: peer0.org2.example.com
     extends:
-      file: peer-base/peer-base-ex-bond-trading.yaml
+      file: peer-base/peer-base-ci.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org2.example.com
@@ -81,16 +79,14 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/:/etc/hyperledger/msp/peer:ro
-    ports:
-       - 10056:7056
-       - 10058:7058
     depends_on:
        - orderer.example.com
 
   peer0.org3.example.com:
     container_name: damlonfabric_peer0.org3.example.com
+    hostname: peer0.org3.example.com
     extends:
-      file: peer-base/peer-base-ex-bond-trading.yaml
+      file: peer-base/peer-base-ci.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org3.example.com
@@ -106,16 +102,14 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org3.example.com/peers/peer0.org3.example.com/:/etc/hyperledger/msp/peer:ro
-    ports:
-       - 10060:7060
-       - 10061:7061
     depends_on:
        - orderer.example.com
 
   peer0.org4.example.com:
     container_name: damlonfabric_peer0.org4.example.com
+    hostname: peer0.org4.example.com
     extends:
-      file: peer-base/peer-base-ex-bond-trading.yaml
+      file: peer-base/peer-base-ci.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org4.example.com
@@ -131,16 +125,14 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org4.example.com/peers/peer0.org4.example.com/:/etc/hyperledger/msp/peer:ro
-    ports:
-       - 10062:7062
-       - 10063:7063
     depends_on:
        - orderer.example.com
 
   peer0.org5.example.com:
     container_name: damlonfabric_peer0.org5.example.com
+    hostname: peer0.org5.example.com
     extends:
-      file: peer-base/peer-base-ex-bond-trading.yaml
+      file: peer-base/peer-base-ci.yaml
       service: peer-base
     environment:
       - CORE_PEER_ID=peer0.org5.example.com
@@ -156,9 +148,6 @@ services:
     volumes:
          - /var/run/:/host/var/run/
          - ./data/crypto-config/peerOrganizations/org5.example.com/peers/peer0.org5.example.com/:/etc/hyperledger/msp/peer:ro
-    ports:
-       - 10066:7066
-       - 10068:7068
     depends_on:
        - orderer.example.com
 
@@ -168,13 +157,16 @@ services:
       container_name: damlonfabric_configtxlator
 
   daml-on-fabric:
-      image: msb/daml-on-fabric
-      command: bash -c 'mvn clean compile assembly:single && sbt "run --port 6865 SemanticTests.dar"'
-      volumes:
-        - ./../../../:/data/
+      image: hacera/daml-on-fabric:v1
       container_name: damlonfabric_daml_on_fabric
+      environment:
+        - LEDGER_PORT=6865
+        - LEDGER_ROLES=provision,time,ledger
+        - LEDGER_ARGS=SemanticTests.dar
       ports:
-        - 7600
         - 6865
-        - "127.0.0.1:4010:4000"
+      depends_on:
+        - orderer.example.com
+        - peer0.org1.example.com
+        - peer0.org2.example.com
 

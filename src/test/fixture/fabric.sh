@@ -15,6 +15,10 @@ if [ "$DOCKER_COMPOSE_FILE" == "" ]; then
   DOCKER_COMPOSE_FILE="docker-compose.yaml"
 fi
 
+if [ "$DOCKER_NETWORK" == "" ]; then
+  DOCKER_NETWORK="daml-on-fabric"
+fi
+
 ORG_HYPERLEDGER_FABRIC_SDKTEST_VERSION="2.0.0"
 IMAGE_TAG_FABRIC_CA=":2.0.0-alpha"
 IMAGE_TAG_FABRIC=":2.0.0-alpha"
@@ -40,34 +44,36 @@ function clean(){
 
 }
 
-function updetached()
+function updetached() {
 
   if [ "$ORG_HYPERLEDGER_FABRIC_SDKTEST_VERSION" == "1.0.0" ]; then
-    docker-compose -p daml-on-fabric -f $DOCKER_COMPOSE_FILE up -d --force-recreate ca0 ca1 peer1.org1.example.com peer1.org2.example.com
+    docker-compose -p $DOCKER_NETWORK -f $DOCKER_COMPOSE_FILE up -d --force-recreate ca0 ca1 peer1.org1.example.com peer1.org2.example.com
   else
-    docker-compose -p daml-on-fabric -f $DOCKER_COMPOSE_FILE up -d --force-recreate 
+    docker-compose -p $DOCKER_NETWORK -f $DOCKER_COMPOSE_FILE up -d --force-recreate 
 fi
+
+}
 
 function up(){
 
   if [ "$ORG_HYPERLEDGER_FABRIC_SDKTEST_VERSION" == "1.0.0" ]; then
-    docker-compose -p daml-on-fabric -f $DOCKER_COMPOSE_FILE up --force-recreate ca0 ca1 peer1.org1.example.com peer1.org2.example.com
+    docker-compose -p $DOCKER_NETWORK -f $DOCKER_COMPOSE_FILE up --force-recreate ca0 ca1 peer1.org1.example.com peer1.org2.example.com
   else
-    docker-compose -p daml-on-fabric -f $DOCKER_COMPOSE_FILE up --force-recreate 
+    docker-compose -p $DOCKER_NETWORK -f $DOCKER_COMPOSE_FILE up --force-recreate 
 fi
 
 }
 
 function down(){
-  docker-compose -p daml-on-fabric -f $DOCKER_COMPOSE_FILE down;
+  docker-compose -p $DOCKER_NETWORK -f $DOCKER_COMPOSE_FILE down;
 }
 
 function stop (){
-  docker-compose -p daml-on-fabric -f $DOCKER_COMPOSE_FILE stop;
+  docker-compose -p $DOCKER_NETWORK -f $DOCKER_COMPOSE_FILE stop;
 }
 
 function start (){
-  docker-compose -p daml-on-fabric -f $DOCKER_COMPOSE_FILE start;
+  docker-compose -p $DOCKER_NETWORK -f $DOCKER_COMPOSE_FILE start;
 }
 
 

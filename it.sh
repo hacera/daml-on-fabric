@@ -15,28 +15,28 @@ curl -L "https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/
      -o target/ledger-api-test-tool.jar
 
 
-echo "Extracting the .dar file to load in example server..."
+echo "Extracting the .dar file to load in DAML-on-Fabric server..."
 cd target && java -jar ledger-api-test-tool.jar --extract || true # mask incorrect error code of the tool: https://github.com/digital-asset/daml/pull/889
 # back to prior working directory
 cd ../
 
-echo "Launching fabric network"
+echo "Building CI Docker image"
 cd src/test/fixture/
-./restart_fabric.sh
+./build_ci.sh
+
+echo "Launching Fabric network and DAML-on-Fabric server"
+export DOCKER_COMPOSE_FILE=docker-compose-ci.yaml
+export DOCKER_NETWORK=daml-on-fabric_ci
+./fabric.sh down
+./fabric.sh updetached
 cd ../../../
 
-echo "Giving time for fabric network to initialise"
-sleep 90
+echo "Giving time for everything to initialize"
+sleep 90s
 
-echo "Launching damlonx-example server..."
-java -jar target/scala-2.12/daml-on-fabric.jar --port=6865 --role provision,time,ledger,explorer target/SemanticTests.dar & serverPid=$!
-echo "Waiting for the server to start"
-#crude sleep that will work cross platform
-sleep 20
-echo "damlonx-example server started"
 echo "Launching the test tool..."
-java -jar target/ledger-api-test-tool.jar -h localhost -p 6865
+docker logs damlonfabric_daml_on_fabric
+docker exec -it damlonfabric_daml_on_fabric /bin/bash -c "java -jar ledger-api-test-tool.jar -h localhost -p 6865; exit $?"
 echo "Test tool run is complete."
-echo "Killing the server..."
-kill $serverPid
-wait $serverPid || true # mask SIGTERM error code we should get here.
+echo "Killing the network..."
+./fabric.sh down
