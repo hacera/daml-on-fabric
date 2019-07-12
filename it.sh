@@ -46,8 +46,9 @@ echo "Giving time for everything to initialize"
 sleep 90s
 
 echo "Launching the test tool..."
-docker logs damlonfabric_daml_on_fabric
 docker exec -it damlonfabric_daml_on_fabric /bin/bash -c "java -jar ledger-api-test-tool.jar -h localhost -p 6865; exit $?"
 echo "Test tool run is complete."
 echo "Killing the network..."
+
+cd src/test/fixture/
 ./fabric.sh down
