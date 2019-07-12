@@ -24,19 +24,31 @@ jobs:
           # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
           key: sbt-cache
       - run:
-          name: Compile samplescala dist package
-          command: cat /dev/null | sbt clean update dist
-      - store_artifacts: # for display in Artifacts: https://circleci.com/docs/2.0/artifacts/ 
-          path: target/universal/samplescala.zip
-          destination: samplescala
+          name: Check formatting
+          command: make format-check
+      - run:
+          name: Compile
+          command: make compile
+      - run:
+          name: Unit tests
+          command: make test
+      - run:
+          name: Package
+          command: make package
+      - run:
+          name: Integration test
+          command: make it
+      #- store_artifacts: # for display in Artifacts: https://circleci.com/docs/2.0/artifacts/ 
+      #    path: target/universal/samplescala.zip
+      #    destination: samplescala
       - save_cache:
           key: sbt-cache
           paths:
             - "~/.ivy2/cache"
             - "~/.sbt"
             - "~/.m2"
-      - deploy:
-          command: |
-              mv target/universal/samplescala.zip $CIRCLE_ARTIFACTS/$ARTIFACT_BUILD
-              aws s3 cp $CIRCLE_ARTIFACTS/$ARTIFACT_BUILD s3://samplescala.blogs/builds/ --metadata {\"git_sha1\":\"$CIRCLE_SHA1\"}
+      #- deploy:
+      #    command: |
+      #        mv target/universal/samplescala.zip $CIRCLE_ARTIFACTS/$ARTIFACT_BUILD
+      #        aws s3 cp $CIRCLE_ARTIFACTS/$ARTIFACT_BUILD s3://samplescala.blogs/builds/ --metadata {\"git_sha1\":\"$CIRCLE_SHA1\"}
 
