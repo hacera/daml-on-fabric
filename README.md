@@ -91,7 +91,7 @@ Created a new project in "quickstart" based on the template "quickstart-java".
 $ cd ~/quickstart/
 $ daml build
 Compiling daml/Main.daml to a DAR.
-Created dist/quickstart.dar.
+Created .daml/dist/quickstart.dar.
 ```
 
 ### Step 3. Run the Ledger with Quick Start DAR archive

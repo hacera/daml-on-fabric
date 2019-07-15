@@ -18,6 +18,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 import jodd.json.JsonParser;
 import org.hyperledger.fabric.protos.common.Common.ChannelHeader;
 import org.hyperledger.fabric.protos.common.Common.Envelope;
@@ -382,6 +384,13 @@ public final class FabricContext {
                 Capabilities caps = Capabilities.newBuilder()
                         .putCapabilities("V1_3", Capability.getDefaultInstance())
                         .build();
+                Map<String, ConfigGroup> allMsps = new HashMap<String, ConfigGroup>();
+                for (String msp : config.channelMsps) {
+                    allMsps.put(msp, ConfigGroup.newBuilder()
+                            .setVersion(0)
+                            .setModPolicy("")
+                            .build());
+                }
                 ByteString channelCaps = caps.toByteString();
                 ConfigUpdate configUpdate = ConfigUpdate.newBuilder()
                         .setChannelId(config.channelId)
@@ -389,26 +398,7 @@ public final class FabricContext {
                                 .setVersion(0)
                                 .putGroups("Application", ConfigGroup.newBuilder()
                                         .setVersion(0)
-                                        .putGroups("Org1MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org2MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org3MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org4MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org5MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
+                                        .putAllGroups(allMsps)
                                         .build())
                                 .putValues("Consortium", ConfigValue.newBuilder()
                                         .setVersion(0)
@@ -418,26 +408,7 @@ public final class FabricContext {
                                 .setVersion(0)
                                 .putGroups("Application", ConfigGroup.newBuilder()
                                         .setVersion(1)
-                                        .putGroups("Org1MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org2MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org3MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org4MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
-                                        .putGroups("Org5MSP", ConfigGroup.newBuilder()
-                                                .setVersion(0)
-                                                .setModPolicy("")
-                                                .build())
+                                        .putAllGroups(allMsps)
                                         .putValues("Capabilities", ConfigValue.newBuilder()
                                                 .setVersion(0)
                                                 .setValue(channelCaps)

@@ -18,4 +18,4 @@ WORKDIR /daml-on-fabric
 
 RUN java -jar ledger-api-test-tool.jar -x
 
-CMD /bin/bash -c "java -jar daml-on-fabric.jar --port $LEDGER_PORT --role $LEDGER_ROLES $LEDGER_ARGS"
+CMD /bin/bash -c "sleep $LEDGER_DELAY; java -jar daml-on-fabric.jar --port $LEDGER_PORT --role $LEDGER_ROLES $LEDGER_ARGS"

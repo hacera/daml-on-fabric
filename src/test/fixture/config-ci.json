@@ -21,6 +21,7 @@
     "mspId": "OrdererMSP"
   },
   "channelId": "mainchannel",
+  "channelMsps": ["Org1MSP", "Org2MSP", "Org3MSP", "Org4MSP", "Org5MSP"],
   "ca": {
     "name": "ca0",
     "url": "http://ca0:7054"

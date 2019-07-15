@@ -10,9 +10,9 @@ sdkVersion=$(sbt --error 'set showSuccess := false'  printSdkVersion)
 # sdkVersion=$(cat build.sbt| egrep -o "sdkVersion.*=.*\".*\"" | perl -pe 's|sdkVersion.*?=.*?"(.*?)"|\1|')
 echo "Detected SDK version is $sdkVersion"
 
-echo "Downloading DAML Integration kit Ledger API Test Tool version ${sdkVersion}..."
-curl -L "https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool_2.12/${sdkVersion}/ledger-api-test-tool_2.12-${sdkVersion}.jar?bt_package=sdk-components" \
-     -o target/ledger-api-test-tool.jar
+#echo "Downloading DAML Integration kit Ledger API Test Tool version ${sdkVersion}..."
+#curl -L "https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool_2.12/${sdkVersion}/ledger-api-test-tool_2.12-${sdkVersion}.jar?bt_package=sdk-components" \
+#     -o target/ledger-api-test-tool.jar
 
 
 echo "Extracting the .dar file to load in DAML-on-Fabric server..."
@@ -46,9 +46,6 @@ echo "Giving time for everything to initialize"
 sleep 90s
 
 echo "Launching the test tool..."
-docker exec -it damlonfabric_daml_on_fabric /bin/bash -c "java -jar ledger-api-test-tool.jar -h localhost -p 6865; exit $?"
+export TEST_COMMAND="java -jar ledger-api-test-tool.jar --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=daml-on-fabric-2:12222 --mapping:Peggy=localhost:11111 --include=SemanticTests"
+docker exec -it damlonfabric_daml_on_fabric_1 /bin/bash -c "$TEST_COMMAND; exit $?"
 echo "Test tool run is complete."
-echo "Killing the network..."
-
-cd src/test/fixture/
-./fabric.sh down
