@@ -187,15 +187,30 @@ services:
       image: hyperledger/fabric-tools${IMAGE_TAG_FABRIC}
       command: /usr/local/bin/configtxlator start
 
-  daml-on-fabric:
+  daml-on-fabric-1:
       image: hacera/daml-on-fabric:v1
-      container_name: damlonfabric_daml_on_fabric
+      container_name: damlonfabric_daml_on_fabric_1
       environment:
-        - LEDGER_PORT=6865
+        - LEDGER_PORT=11111
         - LEDGER_ROLES=provision,time,ledger
-        - LEDGER_ARGS=SemanticTests.dar
+        - LEDGER_DELAY=0s
       ports:
-        - 6865
+        - 11111
+      depends_on:
+        - orderer.example.com
+        - peer0.org1.example.com
+        - peer0.org2.example.com
+
+  daml-on-fabric-2:
+      image: hacera/daml-on-fabric:v1
+      container_name: damlonfabric_daml_on_fabric_2
+      environment:
+        - LEDGER_PORT=12222
+        - LEDGER_ROLES=ledger
+        - LEDGER_ARGS=SemanticTests.dar
+        - LEDGER_DELAY=60s
+      ports:
+        - 12222
       depends_on:
         - orderer.example.com
         - peer0.org1.example.com
