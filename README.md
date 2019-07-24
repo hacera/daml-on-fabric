@@ -98,7 +98,7 @@ Created .daml/dist/quickstart.dar.
 
 ```
 $ cd ~/daml-on-fabric/
-$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/dist/quickstart.dar"
+$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/.daml/dist/quickstart.dar"
 ```
 
 ### Step 4. Run DAML Navigator
