@@ -42,6 +42,7 @@ public class FabricContextConfig {
     public NodeConfig ca;
     public ChaincodeConfig chaincode;
     public String channelId;
+    public List<String> channelMsps;
     public String peerAdminMsp;
     public String ordererAdminMsp;
     public String endorsementPolicy;
