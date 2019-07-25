@@ -91,14 +91,14 @@ Created a new project in "quickstart" based on the template "quickstart-java".
 $ cd ~/quickstart/
 $ daml build
 Compiling daml/Main.daml to a DAR.
-Created dist/quickstart.dar.
+Created .daml/dist/quickstart.dar.
 ```
 
 ### Step 3. Run the Ledger with Quick Start DAR archive
 
 ```
 $ cd ~/daml-on-fabric/
-$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/dist/quickstart.dar"
+$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/.daml/dist/quickstart.dar"
 ```
 
 ### Step 4. Run DAML Navigator
@@ -121,3 +121,23 @@ You should have the following services running:
 More information on Quick Start example and DAML in general can be found here:
 
 https://docs.daml.com/getting-started/quickstart.html
+
+### Step 6.  Running a Multi-node Setup
+## Start Fabric Network
+- `cd src/test/fixture && ./restart_fabric.sh`
+
+## Output DAR from test tool
+- `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool -x`
+- `cp <extracted_location>/*.dar ~/daml-on-fabric`
+
+## First Participant Node
+- `sbt "run --role ledger,time,provision --port 11111" -J-DfabricConfigFile=config.json`
+
+## Second Participant Node
+- `sbt "run --role ledger --port 12222" -J-DfabricConfigFile=config.json`
+
+## Third Participant Node
+- `sbt "run --role ledger --port 13333 SemanticTests.dar Test.dar" -J-DfabricConfigFile=config.json`
+
+## Run Ledger Test Tool against all nodes
+- `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=localhost:12222 --mapping:Peggy=localhost:13333 --include=SemanticTests`
