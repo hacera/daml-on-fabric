@@ -123,13 +123,21 @@ More information on Quick Start example and DAML in general can be found here:
 https://docs.daml.com/getting-started/quickstart.html
 
 ### Step 6.  Running a Multi-node Setup
-## Running Multi-Node
-1. `cd src/test/fixture && ./restart_fabric.sh` -- start fabric network
+## Start Fabric Network
+- `cd src/test/fixture && ./restart_fabric.sh`
 
-Output DAR from test tool
-`bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool -x`
-`cp <extracted_location>/*.dar ~/daml-on-fabric`
-2. `sbt "run --role ledger,time,provision --port 11111" -J-DfabricConfigFile=config.local.json` --first participant node
-3. `sbt "run --role ledger --port 12222" -J-DfabricConfigFile=config.local.json` --second particippant node
-4. `sbt "run --role ledger --port 13333 SemanticTests.dar Test.dar" -J-DfabricConfigFile=config.local.json` --second particippant node
-5. `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=localhost:12222 --mapping:Peggy=localhost:13333 --include=SemanticTests` -- run ledger api test tool
+## Output DAR from test tool
+- `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool -x`
+- `cp <extracted_location>/*.dar ~/daml-on-fabric`
+
+## First Participant Node
+- `sbt "run --role ledger,time,provision --port 11111" -J-DfabricConfigFile=config.json`
+
+## Second Participant Node
+- `sbt "run --role ledger --port 12222" -J-DfabricConfigFile=config.json`
+
+## Third Participant Node
+`sbt "run --role ledger --port 13333 SemanticTests.dar Test.dar" -J-DfabricConfigFile=config.json`
+
+## Run Ledger Test Tool against all nodes
+5. `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=localhost:12222 --mapping:Peggy=localhost:13333 --include=SemanticTests`
