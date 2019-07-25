@@ -137,7 +137,7 @@ https://docs.daml.com/getting-started/quickstart.html
 - `sbt "run --role ledger --port 12222" -J-DfabricConfigFile=config.json`
 
 ## Third Participant Node
-`sbt "run --role ledger --port 13333 SemanticTests.dar Test.dar" -J-DfabricConfigFile=config.json`
+- `sbt "run --role ledger --port 13333 SemanticTests.dar Test.dar" -J-DfabricConfigFile=config.json`
 
 ## Run Ledger Test Tool against all nodes
-5. `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=localhost:12222 --mapping:Peggy=localhost:13333 --include=SemanticTests`
+- `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=localhost:12222 --mapping:Peggy=localhost:13333 --include=SemanticTests`
