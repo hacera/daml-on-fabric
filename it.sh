@@ -46,6 +46,6 @@ echo "Giving time for everything to initialize"
 sleep 90s
 
 echo "Launching the test tool..."
-export TEST_COMMAND="java -jar ledger-api-test-tool.jar --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=daml-on-fabric-2:12222 --mapping:Peggy=localhost:11111 --include=SemanticTests"
-docker exec -it damlonfabric_daml_on_fabric_1 /bin/bash -c "$TEST_COMMAND; exit $?"
+export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=daml-on-fabric-2:12222 --mapping:Peggy=localhost:11111 --include=SemanticTests"
+docker exec -it damlonfabric_daml_on_fabric_1 $TEST_COMMAND
 echo "Test tool run is complete."
