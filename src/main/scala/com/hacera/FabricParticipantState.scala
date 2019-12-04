@@ -20,7 +20,12 @@ import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.daml_lf.DamlLf.Archive
 import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
 import com.digitalasset.platform.akkastreams.dispatcher.SubSource.OneAfterAnother
-import com.daml.ledger.participant.state.kvutils.{KeyValueCommitting, KeyValueConsumption, KeyValueSubmission, Pretty}
+import com.daml.ledger.participant.state.kvutils.{
+  KeyValueCommitting,
+  KeyValueConsumption,
+  KeyValueSubmission,
+  Pretty
+}
 import com.daml.ledger.participant.state.backport.TimeModel
 import com.google.protobuf.ByteString
 import org.slf4j.LoggerFactory
@@ -104,18 +109,18 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   /** Reference to the latest state.
     */
   @volatile private var stateRef: State =
-  State(
-    //commitLog = Vector.empty[Commit],
-    //recordTime = Timestamp.Epoch,
-    //store = Map.empty[ByteString, ByteString],
-    //timeModel = TimeModel.reasonableDefault
-    config = Configuration(
-      1L,
-      timeModel = TimeModel.reasonableDefault,
-      authorizedParticipantId = Some(participantId),
-      openWorld = true
+    State(
+      //commitLog = Vector.empty[Commit],
+      //recordTime = Timestamp.Epoch,
+      //store = Map.empty[ByteString, ByteString],
+      //timeModel = TimeModel.reasonableDefault
+      config = Configuration(
+        1L,
+        timeModel = TimeModel.reasonableDefault,
+        authorizedParticipantId = Some(participantId),
+        openWorld = true
+      )
     )
-  )
 
   private def serializeCommit(commit: Commit): Array[Byte] = {
 
@@ -508,13 +513,17 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   /** Allocate a party on the ledger */
   override def allocateParty(
-                              hint: Option[String],
-                              displayName: Option[String]
-                            ): CompletionStage[PartyAllocationResult] =
-  // TODO: Implement party management (does not work yet just like in reference)
+      hint: Option[String],
+      displayName: Option[String]
+  ): CompletionStage[PartyAllocationResult] =
+    // TODO: Implement party management (does not work yet just like in reference)
     CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
 
-  override def submitConfiguration(maxRecordTime: Timestamp, submissionId: String, config: Configuration): CompletionStage[SubmissionResult] =
+  override def submitConfiguration(
+      maxRecordTime: Timestamp,
+      submissionId: String,
+      config: Configuration
+  ): CompletionStage[SubmissionResult] =
     CompletableFuture.completedFuture({
       val submission =
         KeyValueSubmission.configurationToSubmission(maxRecordTime, submissionId, config)
