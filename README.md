@@ -15,7 +15,7 @@ These are the minimal requirements that this flow was tested with. It's good to 
 - **Java / JDK** version 1.8.0
 - **Scala** version 2.12.7
 - **SBT** version 1.2.8
-- **DAML SDK** version 0.13.12
+- **DAML SDK** version 0.13.20
 
 Docker and Docker-Compose are required to run a Hyperledger Fabric network, everything else is a typical dependency list for building and running a DAML ledger.
 
@@ -98,7 +98,7 @@ Created .daml/dist/quickstart.dar.
 
 ```
 $ cd ~/daml-on-fabric/
-$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/.daml/dist/quickstart.dar"
+$ sbt "run --port 6865 --role provision,time,ledger,explorer ../quickstart/.daml/dist/quickstart-0.0.1.dar"
 ```
 
 ### Step 4. Run DAML Navigator
