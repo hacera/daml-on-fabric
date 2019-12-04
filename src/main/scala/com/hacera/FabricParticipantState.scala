@@ -6,7 +6,6 @@ package com.hacera
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
 import java.time.Clock
-import java.util.UUID
 
 import akka.NotUsed
 import akka.actor.{Actor, ActorSystem, Kill, Props}
@@ -14,16 +13,18 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.daml.ledger.participant.state.kvutils.DamlKvutils._
 import com.daml.ledger.participant.state.v1._
-import com.digitalasset.daml.lf.data.Ref.PackageId
 import com.digitalasset.daml.lf.data.Time.Timestamp
 import com.digitalasset.daml.lf.engine.Engine
 import com.digitalasset.daml_lf.DamlLf.Archive
 import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
 import com.digitalasset.platform.akkastreams.dispatcher.SubSource.OneAfterAnother
-import com.daml.ledger.participant.state.kvutils.KeyValueSubmission
+import com.daml.ledger.participant.state.kvutils.{
+  KeyValueCommitting,
+  KeyValueConsumption,
+  KeyValueSubmission,
+  Pretty
+}
 import com.daml.ledger.participant.state.backport.TimeModel
-import com.daml.ledger.participant.state.kvutils.KeyValueCommitting
-import com.daml.ledger.participant.state.kvutils.KeyValueConsumption
 import com.google.protobuf.ByteString
 import org.slf4j.LoggerFactory
 
@@ -71,7 +72,10 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   // The ledger configuration
   private val ledgerConfig = Configuration(
-    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get
+    1L,
+    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get,
+    authorizedParticipantId = Some(participantId),
+    openWorld = true
   )
 
   // DAML Engine for transaction validation.
@@ -107,8 +111,12 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       //commitLog = Vector.empty[Commit],
       //recordTime = Timestamp.Epoch,
       //store = Map.empty[ByteString, ByteString],
+      //timeModel = TimeModel.reasonableDefault
       config = Configuration(
-        timeModel = TimeModel.reasonableDefault
+        1L,
+        timeModel = TimeModel.reasonableDefault,
+        authorizedParticipantId = Some(participantId),
+        openWorld = true
       )
     )
 
@@ -166,18 +174,17 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
           logger.warn(s"CommitActor: duplicate entry identifier in commit message, ignoring.")
         } else {
           logger.trace(
-            s"CommitActor: processing submission ${KeyValueCommitting.prettyEntryId(entryId)}..."
+            s"CommitActor: processing submission ${Pretty.prettyEntryId(entryId)}..."
           )
           // Process the submission to produce the log entry and the state updates.
           //this.synchronized {
           val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
             engine,
-            state.config,
             entryId,
             newRecordTime,
+            state.config,
             submission,
-            submission.getInputLogEntriesList.asScala
-              .map(eid => eid -> getLogEntry(state, eid))(breakOut),
+            participantId,
             submission.getInputDamlStateList.asScala
               .map(key => key -> getDamlState(state, key))(breakOut)
           )
@@ -191,7 +198,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
             } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
 
           logger.trace(
-            s"CommitActor: committing ${KeyValueCommitting.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
+            s"CommitActor: committing ${Pretty.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
           )
 
           // Write some state to Fabric
@@ -510,4 +517,18 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     // TODO: Implement party management (does not work yet just like in reference)
     CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
 
+  override def submitConfiguration(
+      maxRecordTime: Timestamp,
+      submissionId: String,
+      config: Configuration
+  ): CompletionStage[SubmissionResult] =
+    CompletableFuture.completedFuture({
+      val submission =
+        KeyValueSubmission.configurationToSubmission(maxRecordTime, submissionId, config)
+      commitActorRef ! CommitSubmission(
+        allocateEntryId,
+        submission
+      )
+      SubmissionResult.Acknowledged
+    })
 }

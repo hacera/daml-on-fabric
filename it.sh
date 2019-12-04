@@ -7,21 +7,18 @@ set -euo pipefail
 
 echo "Detecting current DAML SDK version used in the SBT build..."
 sdkVersion=$(sbt --error 'set showSuccess := false'  printSdkVersion)
+bintrayTestToolPath="https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool_2.12/"
 # sdkVersion=$(cat build.sbt| egrep -o "sdkVersion.*=.*\".*\"" | perl -pe 's|sdkVersion.*?=.*?"(.*?)"|\1|')
 echo "Detected SDK version is $sdkVersion"
 
-#echo "Downloading DAML Integration kit Ledger API Test Tool version ${sdkVersion}..."
-#curl -L "https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool_2.12/${sdkVersion}/ledger-api-test-tool_2.12-${sdkVersion}.jar?bt_package=sdk-components" \
-#     -o target/ledger-api-test-tool.jar
-
+echo "Downloading DAML Integration kit Ledger API Test Tool version ${sdkVersion}..."
+curl -L "${bintrayTestToolPath}${sdkVersion}/ledger-api-test-tool_2.12-${sdkVersion}.jar?bt_package=sdk-components" \
+     -o src/test/fixture/ledger-api-test-tool.jar
 
 echo "Extracting the .dar file to load in DAML-on-Fabric server..."
-cd target && java -jar ledger-api-test-tool.jar --extract || true # mask incorrect error code of the tool: https://github.com/digital-asset/daml/pull/889
-# back to prior working directory
-cd ../
+cd src/test/fixture && java -jar ledger-api-test-tool.jar --extract || true # mask incorrect error code of the tool: https://github.com/digital-asset/daml/pull/889
 
 echo "Building CI Docker image"
-cd src/test/fixture/
 ./build_ci.sh
 
 function compress_dir() {
@@ -40,12 +37,12 @@ export DOCKER_COMPOSE_FILE=docker-compose-ci.yaml
 export DOCKER_NETWORK=daml-on-fabric_ci
 ./fabric.sh down
 ./fabric.sh updetached
-cd ../../../
+#cd ../../../
 
 echo "Giving time for everything to initialize"
 sleep 90s
 
 echo "Launching the test tool..."
-export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=daml-on-fabric-2:12222 --mapping:Peggy=localhost:11111 --include=SemanticTests"
+export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar --target-port=11111 --include=SemanticTests --timeout-scale-factor 3.5"
 docker exec -it damlonfabric_daml_on_fabric_1 $TEST_COMMAND
 echo "Test tool run is complete."
