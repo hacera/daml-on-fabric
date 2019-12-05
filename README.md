@@ -127,7 +127,7 @@ https://docs.daml.com/getting-started/quickstart.html
 - `cd src/test/fixture && ./restart_fabric.sh`
 
 ## Output DAR from test tool
-- `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool -x`
+- `java -jar ledger-api-test-tool.jar -x localhost:111111`
 - `cp <extracted_location>/*.dar ~/daml-on-fabric`
 
 ## First Participant Node
@@ -140,4 +140,4 @@ https://docs.daml.com/getting-started/quickstart.html
 - `sbt "run --role ledger --port 13333 SemanticTests.dar Test.dar" -J-DfabricConfigFile=config.json`
 
 ## Run Ledger Test Tool against all nodes
-- `bazel run -- //ledger/ledger-api-test-tool:ledger-api-test-tool --target-port=11111 --mapping:Alice=localhost:11111 --mapping:Bank=localhost:12222 --mapping:Peggy=localhost:13333 --include=SemanticTests`
+- `java -jar ledger-api-test-tool localhost:11111 localhost:12222 localhost:13333 --include=SemanticTests`
