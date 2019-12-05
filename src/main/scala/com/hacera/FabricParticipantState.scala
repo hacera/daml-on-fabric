@@ -5,36 +5,34 @@
 package com.hacera
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
-import java.time.Clock
+import java.time.{Clock, Duration => JDuration}
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{CompletableFuture, CompletionStage}
 
 import akka.NotUsed
 import akka.actor.{Actor, ActorSystem, Kill, Props}
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.daml.ledger.participant.state.kvutils.DamlKvutils._
-import com.daml.ledger.participant.state.v1._
-import com.digitalasset.daml.lf.data.Time.Timestamp
-import com.digitalasset.daml.lf.engine.Engine
-import com.digitalasset.daml_lf.DamlLf.Archive
-import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
-import com.digitalasset.platform.akkastreams.dispatcher.SubSource.OneAfterAnother
 import com.daml.ledger.participant.state.kvutils.{
   KeyValueCommitting,
   KeyValueConsumption,
   KeyValueSubmission,
   Pretty
 }
-import com.daml.ledger.participant.state.backport.TimeModel
+import com.daml.ledger.participant.state.v1._
+import com.digitalasset.daml.lf.data.Time.Timestamp
+import com.digitalasset.daml.lf.engine.Engine
+import com.digitalasset.daml_lf_dev.DamlLf.Archive
+import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
+import com.digitalasset.platform.akkastreams.dispatcher.SubSource.OneAfterAnother
 import com.google.protobuf.ByteString
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.collection.breakOut
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
-import java.util.concurrent.{CompletableFuture, CompletionStage}
-import java.time.{Duration => JDuration}
-import java.util.concurrent.atomic.AtomicInteger
+import scala.concurrent.{ExecutionContext, Future}
 
 object FabricParticipantState {
 
@@ -73,9 +71,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   // The ledger configuration
   private val ledgerConfig = Configuration(
     1L,
-    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get,
-    authorizedParticipantId = Some(participantId),
-    openWorld = true
+    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get
   )
 
   // DAML Engine for transaction validation.
@@ -114,9 +110,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       //timeModel = TimeModel.reasonableDefault
       config = Configuration(
         1L,
-        timeModel = TimeModel.reasonableDefault,
-        authorizedParticipantId = Some(participantId),
-        openWorld = true
+        timeModel = TimeModel.reasonableDefault
       )
     )
 
@@ -304,14 +298,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     * given offset, and the method [[Dispatcher.signalNewHead]] to signal that
     * new elements has been added.
     */
-  private val dispatcher: Dispatcher[Int, List[Update]] = Dispatcher(
-    steppingMode = OneAfterAnother(
-      (idx: Int, _) => idx + 1,
-      (idx: Int) => Future.successful(getUpdate(idx, stateRef))
-    ),
-    zeroIndex = beginning,
-    headAtInitialization = beginning
-  )
+  private val dispatcher: Dispatcher[Int] =
+    Dispatcher("fabric-participant-state", zeroIndex = beginning, headAtInitialization = beginning)
 
   // this function retrieves Commit by index
   private def getCommit(idx: Int, state: State): Commit = {
@@ -381,7 +369,11 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       .startingAt(
         beginAfter
           .map(_.components.head.toInt)
-          .getOrElse(beginning)
+          .getOrElse(beginning),
+        OneAfterAnother[Int, List[Update]](
+          (idx: Int, _) => idx + 1,
+          (idx: Int) => Future.successful(getUpdate(idx, stateRef))
+        )
       )
       .collect {
         case (offset, updates) =>
@@ -524,7 +516,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   ): CompletionStage[SubmissionResult] =
     CompletableFuture.completedFuture({
       val submission =
-        KeyValueSubmission.configurationToSubmission(maxRecordTime, submissionId, config)
+        KeyValueSubmission
+          .configurationToSubmission(maxRecordTime, submissionId, participantId, config)
       commitActorRef ! CommitSubmission(
         allocateEntryId,
         submission

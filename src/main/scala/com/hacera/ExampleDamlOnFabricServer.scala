@@ -4,23 +4,25 @@
 
 package com.hacera
 
-import java.io.{File, FileWriter}
-import java.util.zip.{ZipFile, ZipInputStream}
+import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor.ActorSystem
-import akka.stream.scaladsl.Sink
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Supervision}
-import com.daml.ledger.api.server.damlonx.Server
-import com.daml.ledger.participant.state.index.v1.impl.reference.ReferenceIndexService
+import com.codahale.metrics.SharedMetricRegistries
 import com.daml.ledger.participant.state.v1.ParticipantId
 import com.digitalasset.daml.lf.archive.DarReader
 import com.digitalasset.daml.lf.data.Ref
-import com.digitalasset.daml_lf.DamlLf
-import com.digitalasset.daml_lf.DamlLf.Archive
-import com.digitalasset.platform.common.util.DirectExecutionContext
+import com.digitalasset.daml_lf_dev.DamlLf
+import com.digitalasset.daml_lf_dev.DamlLf.Archive
+import com.digitalasset.ledger.api.auth.AuthServiceWildcard
+import com.digitalasset.platform.common.logging.NamedLoggerFactory
+import com.digitalasset.platform.index.{StandaloneIndexServer, StandaloneIndexerServer}
 import org.slf4j.LoggerFactory
 
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
+import scala.util.control.NonFatal
 
 /** The example server is a fully compliant DAML Ledger API server
   * backed by the in-memory reference index and participant state implementations.
@@ -30,8 +32,26 @@ import scala.util.Try
 object ExampleDamlOnFabricServer extends App {
   val logger = LoggerFactory.getLogger(this.getClass)
 
-  val config = Cli.parse(args).getOrElse(sys.exit(1))
-
+  val config: com.hacera.Config = Cli
+    .parse(
+      args,
+      "daml-on-fabric",
+      "A fully compliant DAML Ledger API server backed by Fabric",
+      allowExtraParticipants = true
+    )
+    .getOrElse(sys.exit(1))
+  val indexConfig = com.digitalasset.platform.index.config.Config(
+    config.port,
+    config.portFile,
+    config.archiveFiles,
+    config.maxInboundMessageSize,
+    config.timeProvider,
+    config.jdbcUrl,
+    config.tlsConfig,
+    config.participantId,
+    config.extraParticipants,
+    config.startupMode
+  )
   // Initialize Fabric connection
   // this will create the singleton instance and establish the connection
   val fabricConn = DAMLKVConnector.get(config.roleProvision, config.roleExplorer)
@@ -44,6 +64,7 @@ object ExampleDamlOnFabricServer extends App {
 
   // Initialize Akka and log exceptions in flows.
   implicit val system: ActorSystem = ActorSystem("DamlonFabricServer")
+  implicit val ec: ExecutionContext = system.dispatcher
   implicit val materializer: ActorMaterializer = ActorMaterializer(
     ActorMaterializerSettings(system)
       .withSupervisionStrategy { e =>
@@ -54,6 +75,11 @@ object ExampleDamlOnFabricServer extends App {
 
   val participantId: ParticipantId = Ref.LedgerString.assertFromString(config.participantId)
   val ledger = new FabricParticipantState(config.roleTime, config.roleLedger, participantId)
+
+  val readService = ledger
+  val writeService = ledger
+  val loggerFactory = NamedLoggerFactory.forParticipant(config.participantId)
+  val authService = AuthServiceWildcard
 
   if (config.roleLedger) {
     def archivesFromDar(file: File): List[Archive] = {
@@ -81,31 +107,45 @@ object ExampleDamlOnFabricServer extends App {
   Runtime.getRuntime.addShutdownHook(new Thread(() => fabricConn.shutdown()))
 
   if (config.roleLedger) {
-    ledger.getLedgerInitialConditions
-      .runWith(Sink.head)
-      .foreach { initialConditions =>
-        val indexService = ReferenceIndexService(
-          participantReadService = ledger,
-          initialConditions = initialConditions,
-          participantId = participantId
-        )
 
-        val server = Server(
-          serverPort = config.port,
-          sslContext = config.tlsConfig.flatMap(_.server),
-          indexService = indexService,
-          writeService = ledger
-        )
+    val indexersF: Future[(AutoCloseable, StandaloneIndexServer#SandboxState)] = for {
+      indexerServer <- StandaloneIndexerServer(
+        readService,
+        indexConfig,
+        loggerFactory,
+        SharedMetricRegistries.getOrCreate(s"indexer-${config.participantId}")
+      )
+      indexServer <- StandaloneIndexServer(
+        indexConfig,
+        readService,
+        writeService,
+        authService,
+        loggerFactory,
+        SharedMetricRegistries.getOrCreate(s"ledger-api-server-${config.participantId}")
+      ).start()
+    } yield (indexerServer, indexServer)
 
-        // If port file was provided, write out the allocated server port to it.
-        config.portFile.foreach { f =>
-          val w = new FileWriter(f)
-          w.write(s"${server.port}\n")
-          w.close()
+    val closed = new AtomicBoolean(false)
+
+    def closeServer(): Unit = {
+      if (closed.compareAndSet(false, true)) {
+        indexersF.foreach {
+          case (indexer, indexServer) =>
+            indexer.close()
+            indexServer.close()
         }
+        materializer.shutdown()
+        val _ = system.terminate()
+      }
+    }
 
-        // Add a hook to close the server. Invoked when Ctrl-C is pressed.
-        Runtime.getRuntime.addShutdownHook(new Thread(() => server.close()))
-      }(DirectExecutionContext)
+    try Runtime.getRuntime.addShutdownHook(new Thread(() => {
+      closeServer()
+    }))
+    catch {
+      case NonFatal(t) =>
+        logger.error("Shutting down Sandbox application because of initialization error", t)
+        closeServer()
+    }
   }
 }
