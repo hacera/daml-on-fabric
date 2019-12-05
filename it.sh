@@ -7,12 +7,12 @@ set -euo pipefail
 
 echo "Detecting current DAML SDK version used in the SBT build..."
 sdkVersion=$(sbt --error 'set showSuccess := false'  printSdkVersion)
-bintrayTestToolPath="https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool_2.12/"
+bintrayTestToolPath="https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool/"
 # sdkVersion=$(cat build.sbt| egrep -o "sdkVersion.*=.*\".*\"" | perl -pe 's|sdkVersion.*?=.*?"(.*?)"|\1|')
 echo "Detected SDK version is $sdkVersion"
 
 echo "Downloading DAML Integration kit Ledger API Test Tool version ${sdkVersion}..."
-curl -L "${bintrayTestToolPath}${sdkVersion}/ledger-api-test-tool_2.12-${sdkVersion}.jar?bt_package=sdk-components" \
+curl -L "${bintrayTestToolPath}${sdkVersion}/ledger-api-test-tool-${sdkVersion}.jar?bt_package=sdk-components" \
      -o src/test/fixture/ledger-api-test-tool.jar
 
 echo "Extracting the .dar file to load in DAML-on-Fabric server..."
