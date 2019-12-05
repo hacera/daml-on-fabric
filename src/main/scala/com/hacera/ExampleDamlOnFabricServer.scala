@@ -5,12 +5,13 @@
 package com.hacera
 
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor.ActorSystem
 import akka.stream.{ActorMaterializer, ActorMaterializerSettings, Supervision}
 import com.codahale.metrics.SharedMetricRegistries
-import com.daml.ledger.participant.state.v1.ParticipantId
+import com.daml.ledger.participant.state.v1.{ParticipantId, SubmissionId}
 import com.digitalasset.daml.lf.archive.DarReader
 import com.digitalasset.daml.lf.data.Ref
 import com.digitalasset.daml_lf_dev.DamlLf
@@ -88,19 +89,21 @@ object ExampleDamlOnFabricServer extends App {
         .fold(t => throw new RuntimeException(s"Failed to parse DAR from $file", t), dar => dar.all)
     }
 
+    def generateSubmissionId = SubmissionId.assertFromString(UUID.randomUUID().toString)
+
     // Parse packages that are already on the chain.
     // Because we are using ReferenceIndexService, we have to re-upload them
     val currentPackages = fabricConn.getPackageList
     currentPackages.foreach { pkgid =>
       val archive = DamlLf.Archive.parseFrom(fabricConn.getPackage(pkgid))
       logger.info(s"Found existing archive ${archive.getHash}.")
-      ledger.uploadPackages(List(archive), Some("uploaded by server"))
+      ledger.uploadPackages(List(archive), Some("uploaded by server"), generateSubmissionId)
     }
 
     // Parse DAR archives given as command-line arguments and upload them
     // to the ledger using a side-channel.
     config.archiveFiles.foreach { f =>
-      ledger.uploadPackages(archivesFromDar(f), Some("uploaded by server"))
+      ledger.uploadPackages(archivesFromDar(f), Some("uploaded by server"), generateSubmissionId)
     }
   }
 
@@ -115,7 +118,7 @@ object ExampleDamlOnFabricServer extends App {
         loggerFactory,
         SharedMetricRegistries.getOrCreate(s"indexer-${config.participantId}")
       )
-      indexServer <- StandaloneIndexServer(
+      indexServer <- new StandaloneIndexServer(
         indexConfig,
         readService,
         writeService,
