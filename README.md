@@ -127,7 +127,7 @@ https://docs.daml.com/getting-started/quickstart.html
 - `cd src/test/fixture && ./restart_fabric.sh`
 
 ## Output DAR from test tool
-- `java -jar ledger-api-test-tool.jar -x localhost:111111`
+- `java -jar ledger-api-test-tool.jar -x localhost:11111`
 - `cp <extracted_location>/*.dar ~/daml-on-fabric`
 
 ## First Participant Node

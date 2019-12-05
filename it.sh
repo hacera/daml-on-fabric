@@ -16,7 +16,7 @@ curl -L "${bintrayTestToolPath}${sdkVersion}/ledger-api-test-tool-${sdkVersion}.
      -o src/test/fixture/ledger-api-test-tool.jar
 
 echo "Extracting the .dar file to load in DAML-on-Fabric server..."
-cd src/test/fixture && java -jar ledger-api-test-tool.jar --extract localhost:111111 || true # mask incorrect error code of the tool: https://github.com/digital-asset/daml/pull/889
+cd src/test/fixture && java -jar ledger-api-test-tool.jar --extract localhost:11111 || true # mask incorrect error code of the tool: https://github.com/digital-asset/daml/pull/889
 
 echo "Building CI Docker image"
 ./build_ci.sh
@@ -43,6 +43,6 @@ echo "Giving time for everything to initialize"
 sleep 90s
 
 echo "Launching the test tool..."
-export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar localhost:111111 --include=SemanticTests --timeout-scale-factor 3.5"
+export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar localhost:11111 --include=SemanticTests --timeout-scale-factor 3.5"
 docker exec -it damlonfabric_daml_on_fabric_1 $TEST_COMMAND
 echo "Test tool run is complete."
