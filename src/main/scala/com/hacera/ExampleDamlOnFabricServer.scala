@@ -37,7 +37,7 @@ object ExampleDamlOnFabricServer extends App {
     .parse(
       args,
       "daml-on-fabric",
-      "A fully compliant DAML Ledger API server backed by Fabric",
+      "A fully compliant DAML Ledger API server backed by Fabric"
     )
     .getOrElse(sys.exit(1))
   val indexConfig = com.digitalasset.platform.index.config.Config(

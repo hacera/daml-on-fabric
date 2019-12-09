@@ -47,17 +47,17 @@ object FabricParticipantState {
   /** A commit sent to the [[FabricParticipantState.CommitActor]]
     */
   final case class CommitSubmission(
-                                     entryId: Proto.DamlLogEntryId,
-                                     envelope: ByteString
-                                   ) extends Commit
+      entryId: Proto.DamlLogEntryId,
+      envelope: ByteString
+  ) extends Commit
 
   /** A periodically emitted heartbeat that is committed to the ledger. */
   final case class CommitHeartbeat(recordTime: Timestamp) extends Commit
 
   final case class AddPackageUploadRequest(
-                                            submissionId: String,
-                                            cf: CompletableFuture[UploadPackagesResult]
-                                          )
+      submissionId: String,
+      cf: CompletableFuture[UploadPackagesResult]
+  )
 
   final case class AddPotentialResponse(idx: Int)
 
@@ -67,11 +67,11 @@ object FabricParticipantState {
   * the key-value utilities and a Fabric store.
   */
 class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participantId: ParticipantId)(
-  implicit system: ActorSystem,
-  mat: Materializer
+    implicit system: ActorSystem,
+    mat: Materializer
 ) extends ReadService
-  with WriteService
-  with AutoCloseable {
+    with WriteService
+    with AutoCloseable {
 
   import FabricParticipantState._
 
@@ -185,7 +185,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   class CommitActor extends Actor {
 
     override def receive: Receive = {
-      case commit@CommitHeartbeat(newRecordTime) =>
+      case commit @ CommitHeartbeat(newRecordTime) =>
         logger.trace(s"CommitActor: committing heartbeat, recordTime=$newRecordTime")
 
         // Write recordTime to Fabric
@@ -200,11 +200,11 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
           logger.info(s"Committing new Heartbeat at $newRecordTime")
         }
 
-      case commit@CommitSubmission(entryId, envelope) =>
+      case commit @ CommitSubmission(entryId, envelope) =>
         val submission: Proto.DamlSubmission = Envelope.open(envelope) match {
-          case Left(err) => sys.error(s"Cannot open submission envelope: $err")
+          case Left(err)                                     => sys.error(s"Cannot open submission envelope: $err")
           case Right(Envelope.SubmissionMessage(submission)) => submission
-          case Right(_) => sys.error("Unexpected message in envelope")
+          case Right(_)                                      => sys.error("Unexpected message in envelope")
         }
         val newRecordTime = Timestamp.assertFromString(fabricConn.getRecordTime)
 
@@ -398,9 +398,9 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
         // read update from commit: submission
         val updateBytes = fabricConn.getValue(entryId.getEntryId.toByteArray)
         val logEntry: DamlLogEntry = Envelope.open(ByteString.copyFrom(updateBytes)) match {
-          case Left(err) => sys.error(s"getUpdate: cannot open envelope: $err")
+          case Left(err)                                 => sys.error(s"getUpdate: cannot open envelope: $err")
           case Right(Envelope.LogEntryMessage(logEntry)) => logEntry
-          case Right(_) => sys.error(s"getUpdate: Envelope did not contain log entry")
+          case Right(_)                                  => sys.error(s"getUpdate: Envelope did not contain log entry")
         }
         KeyValueConsumption.logEntryToUpdate(entryId, logEntry)
 
@@ -464,16 +464,16 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     *                        of this method.
     */
   override def submitTransaction(
-                                  submitterInfo: SubmitterInfo,
-                                  transactionMeta: TransactionMeta,
-                                  transaction: SubmittedTransaction
-                                ): CompletionStage[SubmissionResult] =
+      submitterInfo: SubmitterInfo,
+      transactionMeta: TransactionMeta,
+      transaction: SubmittedTransaction
+  ): CompletionStage[SubmissionResult] =
     CompletableFuture.completedFuture({
       // Construct a [[DamlSubmission]] message using the key-value utilities.
       // [[DamlSubmission]] contains the serialized transaction and metadata such as
       // the input contracts and other state required to validate the transaction.
       val submission =
-      KeyValueSubmission.transactionToSubmission(submitterInfo, transactionMeta, transaction)
+        KeyValueSubmission.transactionToSubmission(submitterInfo, transactionMeta, transaction)
 
       // Send the [[DamlSubmission]] to the commit actor. The messages are
       // queued and the actor's receive method is invoked sequentially with
@@ -489,10 +489,10 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   /** Allocate a party on the ledger */
   override def allocateParty(
-                              hint: Option[Party],
-                              displayName: Option[String],
-                              submissionId: SubmissionId
-                            ): CompletionStage[SubmissionResult] = {
+      hint: Option[Party],
+      displayName: Option[String],
+      submissionId: SubmissionId
+  ): CompletionStage[SubmissionResult] = {
     val party = hint.getOrElse(generateRandomParty())
     val submission =
       KeyValueSubmission.partyToSubmission(submissionId, Some(party), displayName, participantId)
@@ -513,9 +513,9 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   /** Upload DAML-LF packages to the ledger */
   override def uploadPackages(
-                               archives: List[Archive],
-                               sourceDescription: Option[String]
-                             ): CompletionStage[UploadPackagesResult] = {
+      archives: List[Archive],
+      sourceDescription: Option[String]
+  ): CompletionStage[UploadPackagesResult] = {
     val sId = submissionId.getAndIncrement().toString
     val cf = new CompletableFuture[UploadPackagesResult]
     commitActorRef ! CommitSubmission(
@@ -562,7 +562,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     else {
       Envelope.open(ByteString.copyFrom(entryBytes)) match {
         case Right(Envelope.StateValueMessage(v)) => Option(v)
-        case _ => sys.error(s"getDamlState: Envelope did not contain a state value")
+        case _                                    => sys.error(s"getDamlState: Envelope did not contain a state value")
       }
     }
   }
@@ -588,10 +588,10 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   /** Submit a new configuration to the ledger. */
   override def submitConfiguration(
-                                    maxRecordTime: Timestamp,
-                                    submissionId: SubmissionId,
-                                    config: Configuration
-                                  ): CompletionStage[SubmissionResult] =
+      maxRecordTime: Timestamp,
+      submissionId: SubmissionId,
+      config: Configuration
+  ): CompletionStage[SubmissionResult] =
     CompletableFuture.completedFuture({
       val submission =
         KeyValueSubmission
