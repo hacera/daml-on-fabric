@@ -38,7 +38,6 @@ object ExampleDamlOnFabricServer extends App {
       args,
       "daml-on-fabric",
       "A fully compliant DAML Ledger API server backed by Fabric",
-      allowExtraParticipants = true
     )
     .getOrElse(sys.exit(1))
   val indexConfig = com.digitalasset.platform.index.config.Config(
@@ -89,21 +88,19 @@ object ExampleDamlOnFabricServer extends App {
         .fold(t => throw new RuntimeException(s"Failed to parse DAR from $file", t), dar => dar.all)
     }
 
-    def generateSubmissionId = SubmissionId.assertFromString(UUID.randomUUID().toString)
-
     // Parse packages that are already on the chain.
     // Because we are using ReferenceIndexService, we have to re-upload them
     val currentPackages = fabricConn.getPackageList
     currentPackages.foreach { pkgid =>
       val archive = DamlLf.Archive.parseFrom(fabricConn.getPackage(pkgid))
       logger.info(s"Found existing archive ${archive.getHash}.")
-      ledger.uploadPackages(List(archive), Some("uploaded by server"), generateSubmissionId)
+      ledger.uploadPackages(List(archive), Some("uploaded by server"))
     }
 
     // Parse DAR archives given as command-line arguments and upload them
     // to the ledger using a side-channel.
     config.archiveFiles.foreach { f =>
-      ledger.uploadPackages(archivesFromDar(f), Some("uploaded by server"), generateSubmissionId)
+      ledger.uploadPackages(archivesFromDar(f), Some("uploaded by server"))
     }
   }
 

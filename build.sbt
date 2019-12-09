@@ -29,34 +29,38 @@ lazy val root = (project in file("."))
     name := "DAML-on-Fabric",
     libraryDependencies ++= Seq(
       scalaTest % Test,
+      // DAML
+      "com.digitalasset" % "daml-lf-dev-archive-java-proto" % sdkVersion,
+      "com.digitalasset" %% "daml-lf-data" % sdkVersion,
+      "com.digitalasset" %% "daml-lf-engine" % sdkVersion,
+      "com.digitalasset" %% "daml-lf-language" % sdkVersion,
+      "com.digitalasset.platform" %% "sandbox" % sdkVersion excludeAll (ExclusionRule("com.fasterxml.jackson.core")),
+      "com.digitalasset.ledger" %% "ledger-api-auth" % sdkVersion excludeAll (ExclusionRule("com.fasterxml.jackson.core")),
+
+      // DAML kvutils
+      "com.daml.ledger" %% "participant-state" % sdkVersion,
+      "com.daml.ledger" %% "participant-state-kvutils" % sdkVersion,
+
+      // Akka
       "com.typesafe.akka" %% "akka-actor" % "2.5.22",
       "com.typesafe.akka" %% "akka-testkit" % "2.5.22" % Test,
       "com.typesafe.akka" %% "akka-stream" % "2.5.22",
       "com.typesafe.akka" %% "akka-stream-testkit" % "2.5.22" % Test,
       "com.typesafe.akka" %% "akka-slf4j" % "2.5.22",
-      "org.slf4j" % "slf4j-api" % "1.7.26",
+
+      // Protobuf / grpc
+      "com.google.protobuf" % "protobuf-java-util" % "3.7.1", //  in current setup: need to ALWAYS use the same version as fabric-sdk-java
+
+      // Logging and monitoring
+      "org.slf4j" % "slf4j-api" % "1.7.25",
       "ch.qos.logback" % "logback-core" % "1.2.3",
       "ch.qos.logback" % "logback-classic" % "1.2.3",
-      "commons-io" % "commons-io" % "2.6",
-      "com.digitalasset" % "daml-lf-dev-archive-java-proto" % sdkVersion,
-      "com.digitalasset" %% "daml-lf-data" % sdkVersion,
-      "com.digitalasset" %% "daml-lf-engine" % sdkVersion,
-      "com.digitalasset" %% "daml-lf-language" % sdkVersion,
-      "com.digitalasset.platform" %% "sandbox" % sdkVersion,
-      "com.digitalasset.ledger" %% "ledger-api-auth" % sdkVersion,
-      "com.daml.ledger" %% "participant-state" % sdkVersion,
-      "com.daml.ledger" %% "participant-state-kvutils" % sdkVersion,
-      "com.github.scopt" %% "scopt" % "4.0.0-RC2",
+
+      // fabric
       "org.hyperledger.fabric-sdk-java" % "fabric-sdk-java" % "1.4.1",
       "org.jodd" % "jodd-json" % "5.0.12",
-      "com.google.protobuf" % "protobuf-java-util" % "3.7.1", //  in current setup: need to ALWAYS use the same version as fabric-sdk-java
+
     ),
     resolvers += Resolver.mavenLocal,
     resolvers += "Digital Asset SDK" at "https://digitalassetsdk.bintray.com/DigitalAssetSDK",
-    dependencyOverrides ++= Seq(
-      /* jackson */
-      "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
-      "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
-      "com.fasterxml.jackson.core" % "jackson-annotations" % jacksonVersion
-    )
   )
