@@ -107,15 +107,6 @@ object Cli {
             roleExplorer = splitStr.contains("explorer")
           )
         })
-      if (allowExtraParticipants) {
-        opt[(Ref.LedgerString, Int, String)]('P', "extra-participant")
-          .optional()
-          .unbounded()
-          .text(
-            "A list of triples in the form `<participant-id>,<port>,<index-jdbc-url>` to spin up multiple nodes backed by the same in-memory ledger"
-          )
-          .action((e, c) => c.copy(extraParticipants = c.extraParticipants :+ e))
-      }
       arg[File]("<archive>...")
         .optional()
         .unbounded()
