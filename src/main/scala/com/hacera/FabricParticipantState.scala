@@ -208,7 +208,6 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
             }
           }
           dispatcher.signalNewHead(fabricConn.getCommitHeight)
-//          matcherActorRef ! AddPotentialResponse(fabricConn.getCommitHeight - 1)
         }
     }
   }
