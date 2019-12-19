@@ -9,7 +9,7 @@ import com.daml.ledger.participant.state.v1.ParticipantId
 import com.digitalasset.api.util.TimeProvider
 import com.digitalasset.daml.lf.data.Ref.LedgerString
 import com.digitalasset.ledger.api.tls.TlsConfiguration
-import com.digitalasset.platform.index.config.StartupMode
+import com.digitalasset.platform.indexer.IndexerStartupMode
 
 final case class Config(
     port: Int,
@@ -21,12 +21,15 @@ final case class Config(
     tlsConfig: Option[TlsConfiguration],
     participantId: ParticipantId,
     extraParticipants: Vector[(ParticipantId, Int, String)],
-    startupMode: StartupMode,
+    startupMode: IndexerStartupMode,
     roleLedger: Boolean,
     roleTime: Boolean,
     roleProvision: Boolean,
     roleExplorer: Boolean
-)
+) {
+  def withTlsConfig(modify: TlsConfiguration => TlsConfiguration): Config =
+    copy(tlsConfig = Some(modify(tlsConfig.getOrElse(TlsConfiguration.Empty))))
+}
 
 object Config {
   val DefaultMaxInboundMessageSize = 4194304
@@ -42,7 +45,7 @@ object Config {
       None,
       LedgerString.assertFromString("fabric-standalone-participant"),
       Vector.empty,
-      StartupMode.MigrateAndStart,
+      IndexerStartupMode.MigrateAndStart,
       false,
       false,
       false,

@@ -5,7 +5,7 @@ ThisBuild / version := "1.1"
 ThisBuild / organization := "com.hacera"
 ThisBuild / organizationName := "HACERA"
 
-lazy val sdkVersion = "100.13.40"
+lazy val sdkVersion = "100.13.41"
 lazy val jacksonVersion = "2.9.8"
 
 // This task is used by the integration test to detect which version of Ledger API Test Tool to use.

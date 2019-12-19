@@ -54,13 +54,6 @@ object FabricParticipantState {
   /** A periodically emitted heartbeat that is committed to the ledger. */
   final case class CommitHeartbeat(recordTime: Timestamp) extends Commit
 
-  final case class AddPackageUploadRequest(
-      submissionId: String,
-      cf: CompletableFuture[UploadPackagesResult]
-  )
-
-  final case class AddPotentialResponse(idx: Int)
-
 }
 
 /** Implementation of the participant-state [[ReadService]] and [[WriteService]] using
@@ -127,55 +120,6 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     ois.close()
     commit
   }
-
-  /** Akka actor that matches the requests for party allocation
-    * with asynchronous responses delivered within the log entries.
-    */
-  class ResponseMatcher extends Actor {
-    var packageRequests: Map[String, CompletableFuture[UploadPackagesResult]] = Map.empty
-
-    @SuppressWarnings(Array("org.wartremover.warts.Any"))
-    override def receive: Receive = {
-      case AddPackageUploadRequest(submissionId, cf) =>
-        packageRequests += (submissionId -> cf); ()
-
-      case AddPotentialResponse(idx) =>
-        assert(idx >= 0 && idx < fabricConn.getCommitHeight)
-
-        getCommit(idx) match {
-          case CommitSubmission(entryId, _) =>
-          //            stateRef.store
-          //              .get(entryId.getEntryId)
-          //              .flatMap { blob =>
-          //                KeyValueConsumption.logEntryToAsyncResponse(
-          //                  entryId,
-          //                  Envelope.open(blob) match {
-          //                    case Right(Envelope.LogEntryMessage(logEntry)) =>
-          //                      logEntry
-          //                    case _ =>
-          //                      sys.error(s"Envolope did not contain log entry")
-          //                  },
-          //                  participantId
-          //                )
-          //              }
-          //              .foreach {
-          //                case KeyValueConsumption.PackageUploadResponse(submissionId, result) =>
-          //                  packageRequests
-          //                    .getOrElse(
-          //                      submissionId,
-          //                      sys.error(
-          //                        s"packageUpload response: $submissionId could not be matched with a request!"))
-          //                    .complete(result)
-          //                  packageRequests -= submissionId
-          //              }
-          case _ => ()
-        }
-    }
-  }
-
-  /** Instance of the [[ResponseMatcher]] to which we send messages used for request-response matching. */
-  private val matcherActorRef =
-    system.actorOf(Props(new ResponseMatcher), s"response-matcher-$ledgerId")
 
   /** Akka actor that receives submissions sequentially and
     * commits them one after another to the state, e.g. appending
@@ -511,22 +455,27 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   private def generateRandomParty(): Ref.Party =
     Ref.Party.assertFromString(s"party-${UUID.randomUUID().toString.take(8)}")
 
-  /** Upload DAML-LF packages to the ledger */
+  /** Upload a collection of DAML-LF packages to the ledger. */
   override def uploadPackages(
+      submissionId: SubmissionId,
       archives: List[Archive],
       sourceDescription: Option[String]
-  ): CompletionStage[UploadPackagesResult] = {
-    val sId = submissionId.getAndIncrement().toString
-    val cf = new CompletableFuture[UploadPackagesResult]
-    commitActorRef ! CommitSubmission(
-      allocateEntryId,
-      Envelope.enclose(
-        KeyValueSubmission
-          .archivesToSubmission(sId, archives, sourceDescription.getOrElse(""), participantId)
+  ): CompletionStage[SubmissionResult] =
+    CompletableFuture.completedFuture({
+      commitActorRef ! CommitSubmission(
+        allocateEntryId,
+        Envelope.enclose(
+          KeyValueSubmission
+            .archivesToSubmission(
+              submissionId,
+              archives,
+              sourceDescription.getOrElse(""),
+              participantId
+            )
+        )
       )
-    )
-    cf
-  }
+      SubmissionResult.Acknowledged
+    })
 
   /** Retrieve the static initial conditions of the ledger, containing
     * the ledger identifier and the initial ledger record time.

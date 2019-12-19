@@ -17,8 +17,9 @@ import com.digitalasset.daml.lf.data.Ref
 import com.digitalasset.daml_lf_dev.DamlLf
 import com.digitalasset.daml_lf_dev.DamlLf.Archive
 import com.digitalasset.ledger.api.auth.AuthServiceWildcard
+import com.digitalasset.platform.apiserver.{ApiServerConfig, StandaloneApiServer}
 import com.digitalasset.platform.common.logging.NamedLoggerFactory
-import com.digitalasset.platform.index.{StandaloneIndexServer, StandaloneIndexerServer}
+import com.digitalasset.platform.indexer.{IndexerConfig, StandaloneIndexerServer}
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -40,18 +41,7 @@ object ExampleDamlOnFabricServer extends App {
       "A fully compliant DAML Ledger API server backed by Fabric"
     )
     .getOrElse(sys.exit(1))
-  val indexConfig = com.digitalasset.platform.index.config.Config(
-    config.port,
-    config.portFile,
-    config.archiveFiles,
-    config.maxInboundMessageSize,
-    config.timeProvider,
-    config.jdbcUrl,
-    config.tlsConfig,
-    config.participantId,
-    config.extraParticipants,
-    config.startupMode
-  )
+
   // Initialize Fabric connection
   // this will create the singleton instance and establish the connection
   val fabricConn = DAMLKVConnector.get(config.roleProvision, config.roleExplorer)
@@ -92,15 +82,17 @@ object ExampleDamlOnFabricServer extends App {
     // Because we are using ReferenceIndexService, we have to re-upload them
     val currentPackages = fabricConn.getPackageList
     currentPackages.foreach { pkgid =>
+      val submissionId = SubmissionId.assertFromString(UUID.randomUUID().toString)
       val archive = DamlLf.Archive.parseFrom(fabricConn.getPackage(pkgid))
       logger.info(s"Found existing archive ${archive.getHash}.")
-      ledger.uploadPackages(List(archive), Some("uploaded by server"))
+      ledger.uploadPackages(submissionId, List(archive), Some("uploaded by server"))
     }
 
     // Parse DAR archives given as command-line arguments and upload them
     // to the ledger using a side-channel.
     config.archiveFiles.foreach { f =>
-      ledger.uploadPackages(archivesFromDar(f), Some("uploaded by server"))
+      val submissionId = SubmissionId.assertFromString(UUID.randomUUID().toString)
+      ledger.uploadPackages(submissionId, archivesFromDar(f), Some("uploaded by server"))
     }
   }
 
@@ -108,15 +100,24 @@ object ExampleDamlOnFabricServer extends App {
 
   if (config.roleLedger) {
 
-    val indexersF: Future[(AutoCloseable, StandaloneIndexServer#SandboxState)] = for {
+    val indexersF: Future[(AutoCloseable, AutoCloseable)] = for {
       indexerServer <- StandaloneIndexerServer(
         readService,
-        indexConfig,
+        IndexerConfig(config.participantId, config.jdbcUrl, config.startupMode),
         loggerFactory,
         SharedMetricRegistries.getOrCreate(s"indexer-${config.participantId}")
       )
-      indexServer <- new StandaloneIndexServer(
-        indexConfig,
+      indexServer <- new StandaloneApiServer(
+        ApiServerConfig(
+          config.participantId,
+          config.archiveFiles,
+          config.port,
+          config.jdbcUrl,
+          config.tlsConfig,
+          config.timeProvider,
+          config.maxInboundMessageSize,
+          config.portFile
+        ),
         readService,
         writeService,
         authService,
