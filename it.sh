@@ -43,6 +43,6 @@ echo "Giving time for everything to initialize"
 sleep 90s
 
 echo "Launching the test tool..."
-export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar localhost:11111 --include=SemanticTests --timeout-scale-factor 3.5"
-docker exec -it damlonfabric_daml_on_fabric_1 $TEST_COMMAND
+export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar localhost:12222 --include=SemanticTests --timeout-scale-factor 3.5"
+docker exec -it damlonfabric_daml_on_fabric_2 $TEST_COMMAND
 echo "Test tool run is complete."
