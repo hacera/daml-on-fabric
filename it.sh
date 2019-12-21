@@ -40,7 +40,7 @@ export DOCKER_NETWORK=daml-on-fabric_ci
 #cd ../../../
 
 echo "Giving time for everything to initialize"
-sleep 120s
+sleep 90s
 
 echo "Launching the test tool..."
 export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar localhost:12222 --include=SemanticTests --timeout-scale-factor 3.5"
