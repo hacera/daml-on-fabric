@@ -137,7 +137,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
         // Write commit log to Fabric
         // TODO this does not appear to ever be invoked
-//        val newIndex = fabricConn.putCommit(serializeCommit(commit))
+        val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
         // if ledger is running, it will read heartbeat back from the chain...
         if (!roleLedger) {
@@ -195,7 +195,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
           // Write commit log to Fabric
           // TODO this does not appear to ever be invoked
-//          val newIndex = fabricConn.putCommit(serializeCommit(commit))
+          val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
           // Check and write archive
           if (submission.hasPackageUploadEntry) {
