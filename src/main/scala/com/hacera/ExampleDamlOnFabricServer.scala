@@ -27,9 +27,8 @@ import scala.util.Try
 import scala.util.control.NonFatal
 
 /** The example server is a fully compliant DAML Ledger API server
-  * backed by the in-memory reference index and participant state implementations.
-  * Not meant for production, or even development use cases, but for serving as a blueprint
-  * for other implementations.
+  * backed by the H2 in-memory db reference index and participant state implementations.
+  * Not meant for production
   */
 object ExampleDamlOnFabricServer extends App {
   val logger = LoggerFactory.getLogger(this.getClass)

@@ -136,7 +136,6 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
         fabricConn.putRecordTime(newRecordTime.toString)
 
         // Write commit log to Fabric
-        // TODO this does not appear to ever be invoked
         val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
         // if ledger is running, it will read heartbeat back from the chain...
@@ -163,7 +162,6 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
             s"CommitActor: processing submission ${Pretty.prettyEntryId(entryId)}..."
           )
           // Process the submission to produce the log entry and the state updates.
-          //this.synchronized {
           val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
             engine,
             entryId,
@@ -191,10 +189,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
           for ((k, v) <- allUpdates) {
             fabricConn.putValue(k.toByteArray, v.toByteArray)
           }
-          //}
 
           // Write commit log to Fabric
-          // TODO this does not appear to ever be invoked
           val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
           // Check and write archive
