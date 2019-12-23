@@ -10,3 +10,8 @@ project/plugins/project/
 .idea
 hf-user-store/*
 lib/*
+/daml-on-fabric.log
+/src/test/fixture/ledger-api-test-tool.jar
+/src/test/fixture/SemanticTests.dar
+/src/test/fixture/Test-dev.dar
+/src/test/fixture/Test-stable.dar
