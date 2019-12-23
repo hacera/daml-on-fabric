@@ -139,4 +139,6 @@ https://docs.daml.com/getting-started/quickstart.html
 - `sbt "run --role ledger --port 13333 src/test/fixture/SemanticTests.dar src/test/fixture/Test-stable.dar" -J-DfabricConfigFile=config.json`
 
 ## Run Ledger Test Tool against all nodes
-- `java -jar ledger-api-test-tool.jar localhost:11111 localhost:12222 localhost:13333 --include=SemanticTests`
+- `java -jar ledger-api-test-tool.jar localhost:11111 --include=SemanticTests --timeout-scale-factor 2.0`
+- `java -jar ledger-api-test-tool.jar localhost:12222 --include=SemanticTests --timeout-scale-factor 2.0`
+- `java -jar ledger-api-test-tool.jar localhost:13333 --include=SemanticTests --timeout-scale-factor 2.0`
