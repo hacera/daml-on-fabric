@@ -7,12 +7,12 @@ set -euo pipefail
 
 echo "Detecting current DAML SDK version used in the SBT build..."
 sdkVersion=$(sbt --error 'set showSuccess := false'  printSdkVersion)
-bintrayTestToolPath="https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool_2.12/"
+bintrayTestToolPath="https://bintray.com/api/v1/content/digitalassetsdk/DigitalAssetSDK/com/daml/ledger/testtool/ledger-api-test-tool/"
 # sdkVersion=$(cat build.sbt| egrep -o "sdkVersion.*=.*\".*\"" | perl -pe 's|sdkVersion.*?=.*?"(.*?)"|\1|')
 echo "Detected SDK version is $sdkVersion"
 
 echo "Downloading DAML Integration kit Ledger API Test Tool version ${sdkVersion}..."
-curl -L "${bintrayTestToolPath}${sdkVersion}/ledger-api-test-tool_2.12-${sdkVersion}.jar?bt_package=sdk-components" \
+curl -L "${bintrayTestToolPath}${sdkVersion}/ledger-api-test-tool-${sdkVersion}.jar?bt_package=sdk-components" \
      -o src/test/fixture/ledger-api-test-tool.jar
 
 echo "Extracting the .dar file to load in DAML-on-Fabric server..."
@@ -43,6 +43,6 @@ echo "Giving time for everything to initialize"
 sleep 90s
 
 echo "Launching the test tool..."
-export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar --target-port=11111 --include=SemanticTests --timeout-scale-factor 3.5"
-docker exec -it damlonfabric_daml_on_fabric_1 $TEST_COMMAND
+export TEST_COMMAND="/usr/local/openjdk-8/bin/java -jar ledger-api-test-tool.jar localhost:12222 --include=SemanticTests --timeout-scale-factor 5"
+docker exec -it damlonfabric_daml_on_fabric_2 $TEST_COMMAND
 echo "Test tool run is complete."

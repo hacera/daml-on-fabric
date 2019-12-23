@@ -5,55 +5,55 @@
 package com.hacera
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, ObjectInputStream, ObjectOutputStream}
-import java.time.Clock
+import java.time.{Clock, Duration}
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{CompletableFuture, CompletionStage}
 
+import akka.pattern.gracefulStop
 import akka.NotUsed
-import akka.actor.{Actor, ActorSystem, Kill, Props}
+import akka.actor.{Actor, ActorSystem, PoisonPill, Props}
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
+import com.daml.ledger.participant.state.kvutils.{DamlKvutils => Proto}
 import com.daml.ledger.participant.state.kvutils.DamlKvutils._
-import com.daml.ledger.participant.state.v1._
-import com.digitalasset.daml.lf.data.Time.Timestamp
-import com.digitalasset.daml.lf.engine.Engine
-import com.digitalasset.daml_lf.DamlLf.Archive
-import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
-import com.digitalasset.platform.akkastreams.dispatcher.SubSource.OneAfterAnother
 import com.daml.ledger.participant.state.kvutils.{
+  Envelope,
   KeyValueCommitting,
   KeyValueConsumption,
   KeyValueSubmission,
   Pretty
 }
-import com.daml.ledger.participant.state.backport.TimeModel
+import com.daml.ledger.participant.state.v1._
+import com.digitalasset.daml.lf.data.Ref
+import com.digitalasset.daml.lf.data.Time.Timestamp
+import com.digitalasset.daml.lf.engine.Engine
+import com.digitalasset.daml_lf_dev.DamlLf.Archive
+import com.digitalasset.ledger.api.health.{HealthStatus, Healthy}
+import com.digitalasset.platform.akkastreams.dispatcher.Dispatcher
+import com.digitalasset.platform.akkastreams.dispatcher.SubSource.OneAfterAnother
 import com.google.protobuf.ByteString
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.collection.breakOut
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
-import java.util.concurrent.{CompletableFuture, CompletionStage}
-import java.time.{Duration => JDuration}
-import java.util.concurrent.atomic.AtomicInteger
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 object FabricParticipantState {
-
-  case class State(
-      // Current ledger configuration.
-      config: Configuration
-  )
 
   sealed trait Commit extends Serializable with Product
 
   /** A commit sent to the [[FabricParticipantState.CommitActor]]
     */
   final case class CommitSubmission(
-      entryId: DamlLogEntryId,
-      submission: DamlSubmission
+      entryId: Proto.DamlLogEntryId,
+      envelope: ByteString
   ) extends Commit
 
   /** A periodically emitted heartbeat that is committed to the ledger. */
   final case class CommitHeartbeat(recordTime: Timestamp) extends Commit
+
 }
 
 /** Implementation of the participant-state [[ReadService]] and [[WriteService]] using
@@ -65,17 +65,17 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 ) extends ReadService
     with WriteService
     with AutoCloseable {
+
   import FabricParticipantState._
+
   private val logger = LoggerFactory.getLogger(this.getClass)
 
   implicit private val ec: ExecutionContext = mat.executionContext
 
   // The ledger configuration
   private val ledgerConfig = Configuration(
-    1L,
-    TimeModel(JDuration.ofSeconds(600L), JDuration.ofSeconds(600L), JDuration.ofSeconds(600L)).get,
-    authorizedParticipantId = Some(participantId),
-    openWorld = true
+    0L,
+    timeModel = TimeModel(Duration.ofSeconds(1), Duration.ofSeconds(10), Duration.ofMinutes(2)).get
   )
 
   // DAML Engine for transaction validation.
@@ -101,27 +101,9 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   // Fabric connection
   private val fabricConn = com.hacera.DAMLKVConnector.get
 
-  val ledgerId = fabricConn.getLedgerId
-  //  val ledgerId = PackageId.assertFromString(UUID.randomUUID.toString)
-
-  /** Reference to the latest state.
-    */
-  @volatile private var stateRef: State =
-    State(
-      //commitLog = Vector.empty[Commit],
-      //recordTime = Timestamp.Epoch,
-      //store = Map.empty[ByteString, ByteString],
-      //timeModel = TimeModel.reasonableDefault
-      config = Configuration(
-        1L,
-        timeModel = TimeModel.reasonableDefault,
-        authorizedParticipantId = Some(participantId),
-        openWorld = true
-      )
-    )
+  val ledgerId: LedgerId = fabricConn.getLedgerId
 
   private def serializeCommit(commit: Commit): Array[Byte] = {
-
     val baos = new ByteArrayOutputStream
     val oos = new ObjectOutputStream(baos)
     oos.writeObject(commit)
@@ -137,7 +119,6 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     val commit = ois.readObject.asInstanceOf[Commit]
     ois.close()
     commit
-
   }
 
   /** Akka actor that receives submissions sequentially and
@@ -162,8 +143,12 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
           logger.info(s"Committing new Heartbeat at $newRecordTime")
         }
 
-      case commit @ CommitSubmission(entryId, submission) =>
-        val state = stateRef
+      case commit @ CommitSubmission(entryId, envelope) =>
+        val submission: Proto.DamlSubmission = Envelope.open(envelope) match {
+          case Left(err)                                     => sys.error(s"Cannot open submission envelope: $err")
+          case Right(Envelope.SubmissionMessage(submission)) => submission
+          case Right(_)                                      => sys.error("Unexpected message in envelope")
+        }
         val newRecordTime = Timestamp.assertFromString(fabricConn.getRecordTime)
 
         // check if entry already exists
@@ -177,16 +162,15 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
             s"CommitActor: processing submission ${Pretty.prettyEntryId(entryId)}..."
           )
           // Process the submission to produce the log entry and the state updates.
-          //this.synchronized {
           val (logEntry, damlStateUpdates) = KeyValueCommitting.processSubmission(
             engine,
             entryId,
             newRecordTime,
-            state.config,
+            ledgerConfig,
             submission,
             participantId,
             submission.getInputDamlStateList.asScala
-              .map(key => key -> getDamlState(state, key))(breakOut)
+              .map(key => key -> getDamlState(key))(breakOut)
           )
 
           // Combine the abstract log entry and the state updates into concrete updates to the store.
@@ -194,8 +178,8 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
             damlStateUpdates.map {
               case (k, v) =>
                 NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(k)) ->
-                  KeyValueCommitting.packDamlStateValue(v)
-            } + (entryId.getEntryId -> KeyValueCommitting.packDamlLogEntry(logEntry))
+                  Envelope.enclose(v)
+            } + (entryId.getEntryId -> Envelope.enclose(logEntry))
 
           logger.trace(
             s"CommitActor: committing ${Pretty.prettyEntryId(entryId)} and ${allUpdates.size} updates to store."
@@ -205,14 +189,13 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
           for ((k, v) <- allUpdates) {
             fabricConn.putValue(k.toByteArray, v.toByteArray)
           }
-          //}
 
           // Write commit log to Fabric
           val newIndex = fabricConn.putCommit(serializeCommit(commit))
 
           // Check and write archive
-          if (commit.submission.hasPackageUploadEntry) {
-            val archives = commit.submission.getPackageUploadEntry.getArchivesList
+          if (submission.hasPackageUploadEntry) {
+            val archives = submission.getPackageUploadEntry.getArchivesList
             archives.forEach { ar =>
               var currentArchives = fabricConn.getPackageList
               if (!currentArchives.contains(ar.getHash)) {
@@ -220,6 +203,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
               }
             }
           }
+          dispatcher.signalNewHead(fabricConn.getCommitHeight)
         }
     }
   }
@@ -235,7 +219,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       // This source stops when the actor dies.
       val _ = Source
         .tick(HEARTBEAT_INTERVAL, HEARTBEAT_INTERVAL, ())
-        .map(_ => CommitHeartbeat(getNewRecordTime))
+        .map(_ => CommitHeartbeat(getNewRecordTime()))
         .to(Sink.actorRef(actorRef, onCompleteMessage = ()))
         .run()
     }
@@ -296,7 +280,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   /** Dispatcher to subscribe to 'Update' events derived from the state.
     * The index we use here is the "height" of the State.commitLog.
     * This index is transformed into [[Offset]] in [[getUpdate]].
-    **
+    * *
     * [[Dispatcher]] is an utility written by Digital Asset implementing a fanout
     * for a stream of events. It is initialized with an initial offset and a method for
     * retrieving an event given an offset. It provides the method
@@ -304,17 +288,11 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     * given offset, and the method [[Dispatcher.signalNewHead]] to signal that
     * new elements has been added.
     */
-  private val dispatcher: Dispatcher[Int, List[Update]] = Dispatcher(
-    steppingMode = OneAfterAnother(
-      (idx: Int, _) => idx + 1,
-      (idx: Int) => Future.successful(getUpdate(idx, stateRef))
-    ),
-    zeroIndex = beginning,
-    headAtInitialization = beginning
-  )
+  private val dispatcher: Dispatcher[Int] =
+    Dispatcher("fabric-participant-state", zeroIndex = beginning, headAtInitialization = beginning)
 
   // this function retrieves Commit by index
-  private def getCommit(idx: Int, state: State): Commit = {
+  private def getCommit(idx: Int): Commit = {
     // read commit from log (stored on Fabric)
     var commitBytes: Array[Byte] = null
     try {
@@ -336,7 +314,7 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   /** Helper for [[dispatcher]] to fetch [[DamlLogEntry]] from the
     * state and convert it into [[Update]].
     */
-  private def getUpdate(idx: Int, state: State): List[Update] = {
+  private def getUpdate(idx: Int): List[Update] = {
 
     // read commit from log (stored on Fabric)
     var commitBytes: Array[Byte] = null
@@ -358,16 +336,20 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       case CommitSubmission(entryId, _) =>
         // read update from commit: submission
         val updateBytes = fabricConn.getValue(entryId.getEntryId.toByteArray)
-        KeyValueConsumption.logEntryToUpdate(
-          entryId,
-          KeyValueConsumption.unpackDamlLogEntry(ByteString.copyFrom(updateBytes))
-        )
+        val logEntry: DamlLogEntry = Envelope.open(ByteString.copyFrom(updateBytes)) match {
+          case Left(err)                                 => sys.error(s"getUpdate: cannot open envelope: $err")
+          case Right(Envelope.LogEntryMessage(logEntry)) => logEntry
+          case Right(_)                                  => sys.error(s"getUpdate: Envelope did not contain log entry")
+        }
+        KeyValueConsumption.logEntryToUpdate(entryId, logEntry)
 
       case CommitHeartbeat(recordTime) =>
         // read update from commit: heartbeat
         List(Update.Heartbeat(recordTime))
     }
   }
+
+  override def currentHealth(): HealthStatus = Healthy
 
   /** Subscribe to updates to the participant state.
     * Implemented using the [[Dispatcher]] helper which handles the signalling
@@ -381,7 +363,11 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       .startingAt(
         beginAfter
           .map(_.components.head.toInt)
-          .getOrElse(beginning)
+          .getOrElse(beginning),
+        OneAfterAnother[Int, List[Update]](
+          (idx: Int, _) => idx + 1,
+          (idx: Int) => Future.successful(getUpdate(idx))
+        )
       )
       .collect {
         case (offset, updates) =>
@@ -399,24 +385,22 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   /** Submit a transaction to the ledger.
     *
-    * @param submitterInfo: the information provided by the submitter for
-    *   correlating this submission with its acceptance or rejection on the
-    *   associated [[ReadService]].
-    *
-    * @param transactionMeta: the meta-data accessible to all consumers of the
+    * @param submitterInfo   : the information provided by the submitter for
+    *                        correlating this submission with its acceptance or rejection on the
+    *                        associated [[ReadService]].
+    * @param transactionMeta : the meta-data accessible to all consumers of the
     *   transaction. See [[TransactionMeta]] for more information.
-    *
-    * @param transaction: the submitted transaction. This transaction can
-    *   contain contract-ids that are relative to this transaction itself.
-    *   These are used to refer to contracts created in the transaction
+    * @param transaction     : the submitted transaction. This transaction can
+    *                        contain contract-ids that are relative to this transaction itself.
+    *                        These are used to refer to contracts created in the transaction
     *   itself. The participant state implementation is expected to convert
-    *   these into absolute contract-ids that are guaranteed to be unique.
-    *   This typically happens after a transaction has been assigned a
-    *   globally unique id, as then the contract-ids can be derived from that
-    *   transaction id.
+    *                        these into absolute contract-ids that are guaranteed to be unique.
+    *                        This typically happens after a transaction has been assigned a
+    *                        globally unique id, as then the contract-ids can be derived from that
+    *                        transaction id.
     *
-    * See [[WriteService.submitTransaction]] for full documentation for the properties
-    * of this method.
+    *                        See [[WriteService.submitTransaction]] for full documentation for the properties
+    *                        of this method.
     */
   override def submitTransaction(
       submitterInfo: SubmitterInfo,
@@ -435,25 +419,58 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
       // each message, hence this is safe under concurrency.
       commitActorRef ! CommitSubmission(
         allocateEntryId,
-        submission
+        Envelope.enclose(
+          submission
+        )
       )
       SubmissionResult.Acknowledged
     })
 
-  /** Upload DAML-LF packages to the ledger */
+  /** Allocate a party on the ledger */
+  override def allocateParty(
+      hint: Option[Party],
+      displayName: Option[String],
+      submissionId: SubmissionId
+  ): CompletionStage[SubmissionResult] = {
+    val party = hint.getOrElse(generateRandomParty())
+    val submission =
+      KeyValueSubmission.partyToSubmission(submissionId, Some(party), displayName, participantId)
+
+    CompletableFuture.completedFuture({
+      commitActorRef ! CommitSubmission(
+        allocateEntryId,
+        Envelope.enclose(
+          submission
+        )
+      )
+      SubmissionResult.Acknowledged
+    })
+  }
+
+  private def generateRandomParty(): Ref.Party =
+    Ref.Party.assertFromString(s"party-${UUID.randomUUID().toString.take(8)}")
+
+  /** Upload a collection of DAML-LF packages to the ledger. */
   override def uploadPackages(
+      submissionId: SubmissionId,
       archives: List[Archive],
       sourceDescription: Option[String]
-  ): CompletionStage[UploadPackagesResult] = {
-    val sId = submissionId.getAndIncrement().toString
-    val cf = new CompletableFuture[UploadPackagesResult]
-    commitActorRef ! CommitSubmission(
-      allocateEntryId,
-      KeyValueSubmission
-        .archivesToSubmission(sId, archives, sourceDescription.getOrElse(""), participantId)
-    )
-    cf
-  }
+  ): CompletionStage[SubmissionResult] =
+    CompletableFuture.completedFuture({
+      commitActorRef ! CommitSubmission(
+        allocateEntryId,
+        Envelope.enclose(
+          KeyValueSubmission
+            .archivesToSubmission(
+              submissionId,
+              archives,
+              sourceDescription.getOrElse(""),
+              participantId
+            )
+        )
+      )
+      SubmissionResult.Acknowledged
+    })
 
   /** Retrieve the static initial conditions of the ledger, containing
     * the ledger identifier and the initial ledger record time.
@@ -462,16 +479,15 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
     * connectivity to the underlying ledger. The implementer may assume that
     * this method is called only once, or very rarely.
     */
-  // FIXME(JM): Add configuration to initial conditions!
-  override def getLedgerInitialConditions: Source[LedgerInitialConditions, NotUsed] =
+  override def getLedgerInitialConditions(): Source[LedgerInitialConditions, NotUsed] =
     Source.single(initialConditions)
 
   /** Shutdown by killing the [[CommitActor]]. */
   override def close(): Unit = {
-    commitActorRef ! Kill
+    val _ = Await.ready(gracefulStop(commitActorRef, 5.seconds, PoisonPill), 6.seconds)
   }
 
-  private def getLogEntry(state: State, entryId: DamlLogEntryId): DamlLogEntry = {
+  private def getLogEntry(entryId: Proto.DamlLogEntryId): Proto.DamlLogEntry = {
 
     val entryBytes = fabricConn.getValue(entryId.getEntryId.toByteArray)
     if (entryBytes.isEmpty)
@@ -480,20 +496,25 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
 
   }
 
-  private def getDamlState(state: State, key: DamlStateKey): Option[DamlStateValue] = {
+  private def getDamlState(key: Proto.DamlStateKey): Option[Proto.DamlStateValue] = {
 
-    val entryBytes = fabricConn.getValue(
+    val entryBytes: Array[Byte] = fabricConn.getValue(
       NS_DAML_STATE.concat(KeyValueCommitting.packDamlStateKey(key)).toByteArray
     )
     if (entryBytes == null || entryBytes.isEmpty)
-      return Option[DamlStateValue](null)
-    Option[DamlStateValue](DamlStateValue.parseFrom(entryBytes))
+      None
+    else {
+      Envelope.open(ByteString.copyFrom(entryBytes)) match {
+        case Right(Envelope.StateValueMessage(v)) => Option(v)
+        case _                                    => sys.error(s"getDamlState: Envelope did not contain a state value")
+      }
+    }
   }
 
-  private def allocateEntryId: DamlLogEntryId = {
+  private def allocateEntryId: Proto.DamlLogEntryId = {
     val nonce: Array[Byte] = Array.ofDim(8)
     rng.nextBytes(nonce)
-    DamlLogEntryId.newBuilder
+    Proto.DamlLogEntryId.newBuilder
       .setEntryId(NS_LOG_ENTRIES.concat(ByteString.copyFrom(nonce)))
       .build
   }
@@ -506,29 +527,24 @@ class FabricParticipantState(roleTime: Boolean, roleLedger: Boolean, participant
   /** Get a new record time for the ledger from the system clock.
     * Public for use from integration tests.
     */
-  def getNewRecordTime: Timestamp =
+  def getNewRecordTime(): Timestamp =
     Timestamp.assertFromInstant(Clock.systemUTC().instant())
 
-  /** Allocate a party on the ledger */
-  override def allocateParty(
-      hint: Option[String],
-      displayName: Option[String]
-  ): CompletionStage[PartyAllocationResult] =
-    // TODO: Implement party management (does not work yet just like in reference)
-    CompletableFuture.completedFuture(PartyAllocationResult.NotSupported)
-
+  /** Submit a new configuration to the ledger. */
   override def submitConfiguration(
       maxRecordTime: Timestamp,
-      submissionId: String,
+      submissionId: SubmissionId,
       config: Configuration
   ): CompletionStage[SubmissionResult] =
     CompletableFuture.completedFuture({
       val submission =
-        KeyValueSubmission.configurationToSubmission(maxRecordTime, submissionId, config)
+        KeyValueSubmission
+          .configurationToSubmission(maxRecordTime, submissionId, participantId, config)
       commitActorRef ! CommitSubmission(
         allocateEntryId,
-        submission
+        Envelope.enclose(submission)
       )
       SubmissionResult.Acknowledged
     })
+
 }
