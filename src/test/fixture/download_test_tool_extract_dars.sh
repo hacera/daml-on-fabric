@@ -13,4 +13,4 @@ curl -L "${bintrayTestToolPath}${sdkVersion}/ledger-api-test-tool-${sdkVersion}.
      -o ledger-api-test-tool.jar
 
 echo "Extracting the .dar file to load in DAML-on-Fabric server..."
-java -jar ledger-api-test-tool.jar --extract || true # mask incorrect error code of the tool: https://github.com/digital-asset/daml/pull/889
+java -jar ledger-api-test-tool.jar --extract
