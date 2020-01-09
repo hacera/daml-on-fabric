@@ -16,6 +16,8 @@ These are the minimal requirements that this flow was tested with. It's good to 
 - **Scala** version 2.12.7
 - **SBT** version 1.2.8
 - **DAML SDK** version 0.13.41
+- **Fabric SDK Java** version 1.4.1
+- **Fabric** version 1.4.4
 
 Docker and Docker-Compose are required to run a Hyperledger Fabric network, everything else is a typical dependency list for building and running a DAML ledger.
 
