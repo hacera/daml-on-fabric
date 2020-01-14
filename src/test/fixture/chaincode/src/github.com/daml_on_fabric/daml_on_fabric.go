@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/hyperledger/fabric/core/chaincode/shim"
-	pb "github.com/hyperledger/fabric/protos/peer"
+	"github.com/hyperledger/fabric-chaincode-go/shim"
+	pb "github.com/hyperledger/fabric-protos-go/peer"
+	"github.com/op/go-logging"
 )
 
-var logger = shim.NewLogger("daml_on_fabric")
+var logger = logging.MustGetLogger("daml_on_fabric")
 
 const (
 	_prefixState     = "DState:"
