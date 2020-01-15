@@ -20,8 +20,8 @@ if [ "$DOCKER_NETWORK" == "" ]; then
 fi
 
 ORG_HYPERLEDGER_FABRIC_SDKTEST_VERSION="2.0.0"
-IMAGE_TAG_FABRIC_CA=":2.0.0-alpha"
-IMAGE_TAG_FABRIC=":2.0.0-alpha"
+IMAGE_TAG_FABRIC_CA=":1.4.4"
+IMAGE_TAG_FABRIC=":1.4.4"
 
 function clean(){
 
